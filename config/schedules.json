@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "jobs": [
+    {
+      "name": "global-low-zoom-daily",
+      "target": "global",
+      "regions": ["global"],
+      "interval_hours": 24,
+      "recommended_frequency": "daily or weekly",
+      "enabled": true
+    },
+    {
+      "name": "regional-basemap-daily",
+      "target": "basemap",
+      "regions": ["saudi"],
+      "interval_hours": 24,
+      "recommended_frequency": "daily or every 12-24 hours",
+      "enabled": true
+    },
+    {
+      "name": "regional-pois-six-hourly",
+      "target": "pois",
+      "regions": ["saudi"],
+      "interval_hours": 6,
+      "recommended_frequency": "every 1-6 hours",
+      "enabled": true
+    }
+  ],
+  "outside_pmtiles": {
+    "name": "dynamic-api-overlay",
+    "frequency": "realtime",
+    "examples": [
+      "live_drivers",
+      "open_now",
+      "availability",
+      "offers",
+      "active_orders",
+      "temporary_status"
+    ],
+    "serving": "API backed by PostGIS and Redis, not PMTiles"
+  }
+}

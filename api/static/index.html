@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PMTiles Map</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+    <style>
+      html,
+      body,
+      #map {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: #f4f2ed;
+        color: #1f2933;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .toolbar {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(31, 41, 51, 0.14);
+        box-shadow: 0 12px 28px rgba(31, 41, 51, 0.14);
+      }
+
+      select,
+      button,
+      a {
+        height: 34px;
+        border: 1px solid rgba(31, 41, 51, 0.16);
+        background: #fff;
+        color: #1f2933;
+        font: inherit;
+      }
+
+      select {
+        min-width: 132px;
+        padding: 0 30px 0 10px;
+      }
+
+      button,
+      a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 12px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .status {
+        position: absolute;
+        right: 12px;
+        bottom: 24px;
+        z-index: 2;
+        max-width: min(360px, calc(100vw - 24px));
+        padding: 8px 10px;
+        background: rgba(31, 41, 51, 0.86);
+        color: #fff;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="toolbar">
+      <select id="region" aria-label="Region"></select>
+      <select id="style" aria-label="Style"></select>
+      <button id="reload" type="button">Reload</button>
+      <a id="manifest" href="/api/manifest.json" target="_blank" rel="noreferrer">Manifest</a>
+    </div>
+    <div id="status" class="status">Loading</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pmtiles@4.4.1/dist/pmtiles.js"></script>
+    <script>
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol("pmtiles", protocol.tile);
+      maplibregl.setRTLTextPlugin(
+        "https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",
+        true
+      );
+
+      const regionSelect = document.querySelector("#region");
+      const styleSelect = document.querySelector("#style");
+      const reloadButton = document.querySelector("#reload");
+      const manifestLink = document.querySelector("#manifest");
+      const statusEl = document.querySelector("#status");
+      const API_BASE = location.protocol === "file:" ? "http://localhost:8090" : "";
+      let map;
+
+      function apiUrl(path) {
+        return `${API_BASE}${path}`;
+      }
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      async function loadRegions() {
+        const response = await fetch(apiUrl("/api/regions"));
+        const payload = await response.json();
+        const regions = payload.regions.filter((region) => region.has_manifest);
+        regionSelect.innerHTML = "";
+        for (const region of regions) {
+          const option = document.createElement("option");
+          option.value = region.id;
+          option.textContent = region.name || region.id;
+          regionSelect.append(option);
+        }
+        regionSelect.value = new URLSearchParams(location.search).get("region") || regions[0]?.id || "saudi";
+      }
+
+      async function loadStyles() {
+        const response = await fetch(apiUrl("/api/styles"));
+        const payload = await response.json();
+        styleSelect.innerHTML = "";
+        for (const style of payload.styles) {
+          const option = document.createElement("option");
+          option.value = style.id;
+          option.textContent = style.name || style.id;
+          styleSelect.append(option);
+        }
+        styleSelect.value = new URLSearchParams(location.search).get("style") || payload.default_style || "light";
+      }
+
+      async function loadMap() {
+        const region = regionSelect.value || "saudi";
+        const styleId = styleSelect.value || "light";
+        manifestLink.href = apiUrl(region ? `/api/manifest/${region}.json` : "/api/manifest.json");
+        setStatus(`Loading ${region} / ${styleId}`);
+
+        const styleUrl = region
+          ? `/api/style/${region}.json?style=${encodeURIComponent(styleId)}`
+          : `/api/style.json?style=${encodeURIComponent(styleId)}`;
+        const response = await fetch(apiUrl(styleUrl), { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const style = await response.json();
+
+        if (!map) {
+          map = new maplibregl.Map({
+            container: "map",
+            style,
+            center: style.center || [45, 24],
+            zoom: style.zoom || 7,
+            hash: true
+          });
+          map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+        } else {
+          map.setStyle(style);
+          map.jumpTo({ center: style.center || map.getCenter(), zoom: style.zoom || map.getZoom() });
+        }
+
+        if (style.metadata?.bounds) {
+          map.fitBounds(style.metadata.bounds, { padding: 48, duration: 0, maxZoom: 11 });
+        }
+
+        map.once("idle", () => {
+          const tilesets = Object.keys(style.metadata?.tilesets || {}).join(", ");
+          setStatus(`${region} / ${styleId}: ${tilesets || "no tilesets"}`);
+        });
+      }
+
+      reloadButton.addEventListener("click", () => loadMap().catch((error) => setStatus(error.message)));
+      regionSelect.addEventListener("change", () => loadMap().catch((error) => setStatus(error.message)));
+      styleSelect.addEventListener("change", () => loadMap().catch((error) => setStatus(error.message)));
+
+      Promise.all([loadRegions(), loadStyles()])
+        .then(loadMap)
+        .catch((error) => setStatus(error.message));
+    </script>
+  </body>
+</html>

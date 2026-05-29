@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "regions": {
+    "global": {
+      "name": "Global Web Mercator extent",
+      "bbox": [-180.0, -85.05112878, 180.0, 85.05112878],
+      "center": [0.0, 0.0],
+      "notes": "Use only for low zoom overview tiles."
+    },
+    "iraq": {
+      "name": "Iraq",
+      "bbox": [38.79, 29.06, 48.62, 37.39],
+      "center": [43.68, 33.22]
+    },
+    "uae": {
+      "name": "United Arab Emirates",
+      "bbox": [51.50, 22.60, 56.60, 26.50],
+      "center": [54.38, 24.45]
+    },
+    "saudi": {
+      "name": "Saudi Arabia",
+      "bbox": [34.50, 16.30, 55.70, 32.20],
+      "center": [45.08, 23.89]
+    }
+  },
+  "future_region_template": {
+    "name": "Region display name",
+    "bbox": [0.0, 0.0, 0.0, 0.0],
+    "center": [0.0, 0.0],
+    "notes": "Bounding boxes are lon/lat in EPSG:4326: min_lon, min_lat, max_lon, max_lat."
+  }
+}

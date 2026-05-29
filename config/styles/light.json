@@ -1,0 +1,215 @@
+{
+  "version": 8,
+  "name": "Light",
+  "glyphs": "{GLYPHS_URL}",
+  "sources": {},
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#f7f5ef"
+      }
+    },
+    {
+      "id": "landuse",
+      "type": "fill",
+      "source": "basemap",
+      "source-layer": "landuse",
+      "minzoom": 6,
+      "paint": {
+        "fill-color": [
+          "match",
+          ["get", "landuse_class"],
+          "park",
+          "#b9d8a8",
+          "garden",
+          "#b9d8a8",
+          "grassland",
+          "#c9ddb1",
+          "wood",
+          "#9ec597",
+          "scrub",
+          "#b7c99b",
+          "sand",
+          "#e7d7a7",
+          "desert",
+          "#ead8ab",
+          "#d8d6c8"
+        ],
+        "fill-opacity": 0.55
+      }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "basemap",
+      "source-layer": "water",
+      "minzoom": 6,
+      "paint": {
+        "fill-color": "#7db9d8",
+        "fill-opacity": 0.85
+      }
+    },
+    {
+      "id": "boundaries",
+      "type": "line",
+      "source": "basemap",
+      "source-layer": "boundaries",
+      "minzoom": 6,
+      "paint": {
+        "line-color": "#8c9196",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 14, 1.2],
+        "line-dasharray": [2, 2]
+      }
+    },
+    {
+      "id": "roads-casing",
+      "type": "line",
+      "source": "basemap",
+      "source-layer": "roads",
+      "minzoom": 6,
+      "paint": {
+        "line-color": "#fdfdf9",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.4, 10, 2.6, 14, 7.0]
+      }
+    },
+    {
+      "id": "roads",
+      "type": "line",
+      "source": "basemap",
+      "source-layer": "roads",
+      "minzoom": 6,
+      "paint": {
+        "line-color": [
+          "match",
+          ["get", "road_class"],
+          "motorway",
+          "#cf6f3f",
+          "trunk",
+          "#d58b3f",
+          "primary",
+          "#d6a744",
+          "secondary",
+          "#c7b15a",
+          "#77858c"
+        ],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.55, 10, 1.25, 14, 4.0]
+      }
+    },
+    {
+      "id": "buildings",
+      "type": "fill",
+      "source": "basemap",
+      "source-layer": "buildings",
+      "minzoom": 13,
+      "paint": {
+        "fill-color": "#a99386",
+        "fill-opacity": 0.82
+      }
+    },
+    {
+      "id": "building-outlines",
+      "type": "line",
+      "source": "basemap",
+      "source-layer": "buildings",
+      "minzoom": 14,
+      "paint": {
+        "line-color": "#7d6d65",
+        "line-width": 0.45
+      }
+    },
+    {
+      "id": "place-labels",
+      "type": "symbol",
+      "source": "basemap",
+      "source-layer": "places",
+      "minzoom": 6,
+      "filter": ["has", "name"],
+      "layout": {
+        "text-field": ["get", "name"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 6, 11, 12, 18, 16, 22],
+        "text-anchor": "center",
+        "text-allow-overlap": false,
+        "text-padding": 8
+      },
+      "paint": {
+        "text-color": "#2f3a40",
+        "text-halo-color": "#f7f5ef",
+        "text-halo-width": 1.4
+      }
+    },
+    {
+      "id": "road-labels",
+      "type": "symbol",
+      "source": "basemap",
+      "source-layer": "roads",
+      "minzoom": 12,
+      "filter": ["any", ["has", "name"], ["has", "ref"]],
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": ["coalesce", ["get", "name"], ["get", "ref"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 12, 10, 16, 13],
+        "text-rotation-alignment": "map",
+        "text-pitch-alignment": "viewport"
+      },
+      "paint": {
+        "text-color": "#586168",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.2
+      }
+    },
+    {
+      "id": "pois",
+      "type": "circle",
+      "source": "pois",
+      "source-layer": "pois",
+      "minzoom": 10,
+      "paint": {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 16, 7.0],
+        "circle-color": [
+          "match",
+          ["get", "category"],
+          "restaurant",
+          "#d75d4a",
+          "cafe",
+          "#9b6b43",
+          "shop",
+          "#5d7fbf",
+          "hotel",
+          "#8062b7",
+          "fuel",
+          "#528f70",
+          "#394c59"
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 0.5, 16, 1.5],
+        "circle-opacity": 0.88
+      }
+    },
+    {
+      "id": "poi-labels",
+      "type": "symbol",
+      "source": "pois",
+      "source-layer": "pois",
+      "minzoom": 15,
+      "filter": ["has", "name"],
+      "layout": {
+        "text-field": ["get", "name"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 11,
+        "text-offset": [0, 1.0],
+        "text-anchor": "top",
+        "text-allow-overlap": false,
+        "text-padding": 4
+      },
+      "paint": {
+        "text-color": "#26323a",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.2
+      }
+    }
+  ]
+}

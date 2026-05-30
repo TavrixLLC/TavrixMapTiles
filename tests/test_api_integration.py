@@ -291,15 +291,57 @@ class MapApiIntegrationTests(unittest.TestCase):
         self.assert_error(payload, "not_found")
 
     def test_invalid_zxy(self):
+        # Invalid zoom level in vector tile
         status, _headers, payload = json_request("/api/vector/iraq/19/0/0.pbf")
         self.assertEqual(status, 400)
         self.assert_error(payload, "invalid_tile_coordinate")
+
+        # Invalid x coordinate in vector tile
         status, _headers, payload = json_request("/api/vector/iraq/2/4/0.pbf")
         self.assertEqual(status, 400)
         self.assert_error(payload, "invalid_tile_coordinate")
+
+        # Invalid y coordinate in vector tile
         status, _headers, payload = json_request("/api/vector/iraq/2/0/4.pbf")
         self.assertEqual(status, 400)
         self.assert_error(payload, "invalid_tile_coordinate")
+
+        # Vector tile coordinates coordinate boundary validation tests
+        for path in [
+            "/api/vector/2/4/1.pbf",
+            "/api/vector/iraq/2/4/1.pbf",
+            "/api/vector/basemap/2/4/1.pbf",
+            "/api/vector/iraq/basemap/2/4/1.pbf"
+        ]:
+            status, _headers, payload = json_request(path)
+            self.assertEqual(status, 400, f"Expected 400 for {path}")
+            self.assert_error(payload, "invalid_tile_coordinate")
+
+        # Raster tile coordinates coordinate boundary validation tests
+        for path in [
+            "/api/raster/iraq/12/-1/5.png",
+            "/api/raster/iraq/2/4/1.png"
+        ]:
+            status, _headers, payload = json_request(path)
+            self.assertEqual(status, 400, f"Expected 400 for {path}")
+            self.assert_error(payload, "invalid_tile_coordinate")
+
+    def test_request_id_global_and_raster_compression(self):
+        # Test success response preserves provided X-Request-ID
+        req_id = "custom-req-id-success"
+        status, headers, payload = json_request("/api/styles", headers={"X-Request-ID": req_id})
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["X-Request-ID"], req_id)
+
+        # Test success response generates missing X-Request-ID
+        status, headers, payload = json_request("/api/styles")
+        self.assertEqual(status, 200)
+        self.assertTrue(headers["X-Request-ID"])
+
+        # Test raster response is not gzip-compressed
+        status, headers, body = request("/api/raster/iraq/12/2553/1645.png")
+        self.assertEqual(status, 200)
+        self.assertNotIn("Content-Encoding", headers)
 
     def test_tileset_metadata_fields(self):
         status, _headers, payload = json_request("/api/tilesets/iraq/basemap")
@@ -326,6 +368,9 @@ class MapApiIntegrationTests(unittest.TestCase):
             "TileInspect",
             "StyleMetadata",
             "StyleValidation",
+            "TilesetsResponse",
+            "RasterTileJson",
+            "MapLibreStyle",
         ):
             self.assertIn("required", schemas[name])
         self.assertEqual(

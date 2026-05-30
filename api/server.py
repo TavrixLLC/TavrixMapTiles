@@ -1,5 +1,7 @@
-from __future__ import annotations
-
+from __future__ import annotations
+
+
+
 import hashlib
 import json
 import logging
@@ -10,12 +12,18 @@ import subprocess
 import threading
 import time
 import uuid
-from copy import deepcopy
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from socketserver import ThreadingMixIn
-from typing import Any
+from copy import deepcopy
+
+from http import HTTPStatus
+
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from pathlib import Path
+
+from socketserver import ThreadingMixIn
+
+from typing import Any
+
 from urllib.parse import parse_qs, unquote, urlparse
 
 from raster_tiles import (
@@ -29,27 +37,48 @@ from raster_tiles import (
     validate_tile,
 )
 from tile_validation import TileCoordinateValidationError
-
-# ─── Logging ──────────────────────────────────────────────────────────────────
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
-log = logging.getLogger("pmtiles-api")
-
-# ─── Config ───────────────────────────────────────────────────────────────────
-
-APP_ROOT      = Path(os.getenv("APP_ROOT", "/app"))
-OUTPUT_DIR    = Path(os.getenv("OUTPUT_DIR", APP_ROOT / "output"))
-CONFIG_DIR    = Path(os.getenv("CONFIG_DIR", APP_ROOT / "config"))
-STYLES_DIR    = Path(os.getenv("STYLES_DIR", CONFIG_DIR / "styles"))
-API_HOST      = os.getenv("API_HOST", "0.0.0.0")
-API_PORT      = int(os.getenv("API_PORT", "8090"))
-DEFAULT_REGION     = os.getenv("REGION", "saudi")
-DEFAULT_STYLE      = os.getenv("MAP_STYLE", "light")
-API_CORS_ORIGIN    = os.getenv("API_CORS_ORIGIN", "*")
+
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+
+
+
+logging.basicConfig(
+
+    level=logging.INFO,
+
+    format="%(asctime)s [%(levelname)s] %(message)s",
+
+    datefmt="%Y-%m-%dT%H:%M:%S",
+
+)
+
+log = logging.getLogger("pmtiles-api")
+
+
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+
+
+
+APP_ROOT      = Path(os.getenv("APP_ROOT", "/app"))
+
+OUTPUT_DIR    = Path(os.getenv("OUTPUT_DIR", APP_ROOT / "output"))
+
+CONFIG_DIR    = Path(os.getenv("CONFIG_DIR", APP_ROOT / "config"))
+
+STYLES_DIR    = Path(os.getenv("STYLES_DIR", CONFIG_DIR / "styles"))
+
+API_HOST      = os.getenv("API_HOST", "0.0.0.0")
+
+API_PORT      = int(os.getenv("API_PORT", "8090"))
+
+DEFAULT_REGION     = os.getenv("REGION", "saudi")
+
+DEFAULT_STYLE      = os.getenv("MAP_STYLE", "light")
+
+API_CORS_ORIGIN    = os.getenv("API_CORS_ORIGIN", "*")
+
 GLYPHS_URL         = os.getenv("GLYPHS_URL", "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf")
 LOCAL_GLYPHS_URL   = os.getenv("LOCAL_GLYPHS_URL", "/api/fonts/{fontstack}/{range}.pbf")
 GLYPHS_DIR         = Path(os.getenv("GLYPHS_DIR", CONFIG_DIR / "glyphs"))
@@ -70,9 +99,12 @@ EMPTY_SPRITE_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
     "l63dWQAAAABJRU5ErkJggg=="
 )
-
-# ─── In-memory cache ──────────────────────────────────────────────────────────
-
+
+
+# ─── In-memory cache ──────────────────────────────────────────────────────────
+
+
+
 class TTLCache:
     """Thread-safe TTL cache."""
 
@@ -97,11 +129,16 @@ class TTLCache:
     def set(self, key: str, value: Any) -> None:
         with self._lock:
             self._store[key] = (value, time.monotonic())
-
-    def delete(self, key: str) -> None:
-        with self._lock:
-            self._store.pop(key, None)
-
+
+
+    def delete(self, key: str) -> None:
+
+        with self._lock:
+
+            self._store.pop(key, None)
+
+
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
@@ -149,45 +186,84 @@ class APIError(Exception):
         self.message = message
         self.status = status
         self.details = details or {}
-
-# ─── Thread-limited server ────────────────────────────────────────────────────
-
-class BoundedThreadingMixIn(ThreadingMixIn):
-    """ThreadingHTTPServer with a semaphore to cap concurrent threads."""
-
-    daemon_threads = True
-    _semaphore     = threading.Semaphore(MAX_THREADS)
-
-    def process_request(self, request, client_address):
-        if not self._semaphore.acquire(blocking=False):
-            log.warning("Thread pool exhausted – dropping request from %s", client_address[0])
-            try:
-                request.close()
-            except Exception:
-                pass
-            return
-        t = threading.Thread(target=self._process_request_thread, args=(request, client_address))
-        t.daemon = self.daemon_threads
-        t.start()
-
-    def _process_request_thread(self, request, client_address):
-        try:
-            self.finish_request(request, client_address)
-        except Exception:
-            self.handle_error(request, client_address)
-        finally:
-            self.shutdown_request(request)
-            self._semaphore.release()
-
-
-class LimitedThreadingHTTPServer(BoundedThreadingMixIn, ThreadingHTTPServer):
-    pass
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-_SAFE_RE = re.compile(r"[^a-zA-Z0-9_\-]")
-
-
+
+
+# ─── Thread-limited server ────────────────────────────────────────────────────
+
+
+
+class BoundedThreadingMixIn(ThreadingMixIn):
+
+    """ThreadingHTTPServer with a semaphore to cap concurrent threads."""
+
+
+
+    daemon_threads = True
+
+    _semaphore     = threading.Semaphore(MAX_THREADS)
+
+
+
+    def process_request(self, request, client_address):
+
+        if not self._semaphore.acquire(blocking=False):
+
+            log.warning("Thread pool exhausted – dropping request from %s", client_address[0])
+
+            try:
+
+                request.close()
+
+            except Exception:
+
+                pass
+
+            return
+
+        t = threading.Thread(target=self._process_request_thread, args=(request, client_address))
+
+        t.daemon = self.daemon_threads
+
+        t.start()
+
+
+
+    def _process_request_thread(self, request, client_address):
+
+        try:
+
+            self.finish_request(request, client_address)
+
+        except Exception:
+
+            self.handle_error(request, client_address)
+
+        finally:
+
+            self.shutdown_request(request)
+
+            self._semaphore.release()
+
+
+
+
+
+class LimitedThreadingHTTPServer(BoundedThreadingMixIn, ThreadingHTTPServer):
+
+    pass
+
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+
+
+_SAFE_RE = re.compile(r"[^a-zA-Z0-9_\-]")
+
+
+
+
+
 def safe_id(value: str) -> str:
     """Strict allowlist: only alphanumeric, dash, underscore."""
     return _SAFE_RE.sub("", value.removesuffix(".json"))
@@ -208,64 +284,122 @@ def safe_asset_segment(value: str, label: str = "path segment") -> str:
 def read_json(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
-
-
-def manifest_path(region: str) -> Path:
-    return OUTPUT_DIR / "manifests" / f"{safe_id(region)}.json"
-
-
-def _load_manifest_raw(region: str) -> dict:
-    path = manifest_path(region)
-    if not path.exists():
-        raise FileNotFoundError(f"Manifest not found for region '{region}'")
-    return read_json(path)
-
-
-def load_manifest(region: str) -> dict:
-    return _cache.cached(f"manifest:{region}", lambda: _load_manifest_raw(region))
-
-
-def _load_regions_raw() -> dict:
-    path = CONFIG_DIR / "regions.json"
-    return read_json(path) if path.exists() else {"regions": {}}
-
-
-def load_regions() -> dict:
-    return _cache.cached("regions", _load_regions_raw)
-
-
-def _manifest_region_ids_raw() -> set[str]:
-    d = OUTPUT_DIR / "manifests"
-    return {p.stem for p in d.glob("*.json")} if d.exists() else set()
-
-
-def manifest_region_ids() -> set[str]:
-    return _cache.cached("manifest_ids", _manifest_region_ids_raw)
-
-
-def region_center(region: str) -> list[float]:
-    regions = load_regions().get("regions", {})
-    if region in regions and "center" in regions[region]:
-        return regions[region]["center"]
-    return [45.0, 24.0]
-
-
-def listed_regions() -> list[dict]:
-    configured   = load_regions().get("regions", {})
-    manifest_ids = manifest_region_ids()
-    names = sorted(set(configured) | manifest_ids)
-    return [
-        {
-            "id": name,
-            "name": configured.get(name, {}).get("name", name),
-            "has_manifest": name in manifest_ids,
-            "bbox": configured.get(name, {}).get("bbox"),
-            "center": configured.get(name, {}).get("center"),
-        }
-        for name in names
-    ]
-
-
+
+
+
+
+def manifest_path(region: str) -> Path:
+
+    return OUTPUT_DIR / "manifests" / f"{safe_id(region)}.json"
+
+
+
+
+
+def _load_manifest_raw(region: str) -> dict:
+
+    path = manifest_path(region)
+
+    if not path.exists():
+
+        raise FileNotFoundError(f"Manifest not found for region '{region}'")
+
+    return read_json(path)
+
+
+
+
+
+def load_manifest(region: str) -> dict:
+
+    return _cache.cached(f"manifest:{region}", lambda: _load_manifest_raw(region))
+
+
+
+
+
+def _load_regions_raw() -> dict:
+
+    path = CONFIG_DIR / "regions.json"
+
+    return read_json(path) if path.exists() else {"regions": {}}
+
+
+
+
+
+def load_regions() -> dict:
+
+    return _cache.cached("regions", _load_regions_raw)
+
+
+
+
+
+def _manifest_region_ids_raw() -> set[str]:
+
+    d = OUTPUT_DIR / "manifests"
+
+    return {p.stem for p in d.glob("*.json")} if d.exists() else set()
+
+
+
+
+
+def manifest_region_ids() -> set[str]:
+
+    return _cache.cached("manifest_ids", _manifest_region_ids_raw)
+
+
+
+
+
+def region_center(region: str) -> list[float]:
+
+    regions = load_regions().get("regions", {})
+
+    if region in regions and "center" in regions[region]:
+
+        return regions[region]["center"]
+
+    return [45.0, 24.0]
+
+
+
+
+
+def listed_regions() -> list[dict]:
+
+    configured   = load_regions().get("regions", {})
+
+    manifest_ids = manifest_region_ids()
+
+    names = sorted(set(configured) | manifest_ids)
+
+    return [
+
+        {
+
+            "id": name,
+
+            "name": configured.get(name, {}).get("name", name),
+
+            "has_manifest": name in manifest_ids,
+
+            "bbox": configured.get(name, {}).get("bbox"),
+
+            "center": configured.get(name, {}).get("center"),
+
+        }
+
+        for name in names
+
+    ]
+
+
+
+
+
 def style_path(style_id: str) -> Path:
     return STYLES_DIR / f"{safe_id(style_id)}.json"
 
@@ -348,20 +482,34 @@ def list_styles() -> list[dict]:
         except (json.JSONDecodeError, APIError):
             continue
     return styles
-
-
-def resolve_style_id(query: dict[str, list[str]]) -> str:
-    requested = query.get("style", [DEFAULT_STYLE])[0] or DEFAULT_STYLE
-    if style_path(requested).exists():
-        return safe_id(requested)
-    if style_path(DEFAULT_STYLE).exists():
-        return safe_id(DEFAULT_STYLE)
-    styles = list_styles()
-    if styles:
-        return styles[0]["id"]
-    raise FileNotFoundError(f"No style files found in {STYLES_DIR}")
-
-
+
+
+
+
+def resolve_style_id(query: dict[str, list[str]]) -> str:
+
+    requested = query.get("style", [DEFAULT_STYLE])[0] or DEFAULT_STYLE
+
+    if style_path(requested).exists():
+
+        return safe_id(requested)
+
+    if style_path(DEFAULT_STYLE).exists():
+
+        return safe_id(DEFAULT_STYLE)
+
+    styles = list_styles()
+
+    if styles:
+
+        return styles[0]["id"]
+
+    raise FileNotFoundError(f"No style files found in {STYLES_DIR}")
+
+
+
+
+
 def _load_style_template_raw(style_id: str) -> dict:
     path = style_path(style_id)
     if not path.exists():
@@ -373,31 +521,52 @@ def _load_style_template_raw(style_id: str) -> dict:
     if style_has_icons(style) and not style.get("sprite"):
         style["sprite"] = f"/api/sprites/{safe_id(style_id)}/sprite"
     return style
-
-
-def load_style_template(style_id: str) -> dict:
-    return _cache.cached(f"style:{style_id}", lambda: _load_style_template_raw(style_id))
-
-
-# ─── Geo helpers ──────────────────────────────────────────────────────────────
-
-def query_float(query: dict, name: str) -> float | None:
-    try:
-        return float(query.get(name, [""])[0])
-    except (TypeError, ValueError):
-        return None
-
-
+
+
+
+
+def load_style_template(style_id: str) -> dict:
+
+    return _cache.cached(f"style:{style_id}", lambda: _load_style_template_raw(style_id))
+
+
+
+
+
+# ─── Geo helpers ──────────────────────────────────────────────────────────────
+
+
+
+def query_float(query: dict, name: str) -> float | None:
+
+    try:
+
+        return float(query.get(name, [""])[0])
+
+    except (TypeError, ValueError):
+
+        return None
+
+
+
+
+
 def query_bbox(query: dict) -> list[float] | None:
     raw = query.get("bbox", [""])[0].strip()
     if not raw:
         return None
-    parts = [p.strip() for p in raw.replace(";", ",").split(",")]
-    if len(parts) != 4:
-        return None
-    try:
-        w, s, e, n = [float(p) for p in parts]
-    except ValueError:
+    parts = [p.strip() for p in raw.replace(";", ",").split(",")]
+
+    if len(parts) != 4:
+
+        return None
+
+    try:
+
+        w, s, e, n = [float(p) for p in parts]
+
+    except ValueError:
+
         return None
     return [min(w, e), min(s, n), max(w, e), max(s, n)]
 
@@ -411,98 +580,190 @@ def query_center(query: dict) -> list[float] | None:
 
 
 def bbox_contains(cfg: dict, lon: float, lat: float) -> bool:
-    bbox = cfg.get("bbox")
-    if not bbox or len(bbox) != 4:
-        return False
-    mn_lon, mn_lat, mx_lon, mx_lat = [float(v) for v in bbox]
-    return mn_lon <= lon <= mx_lon and mn_lat <= lat <= mx_lat
-
-
-def bbox_intersects(cfg: dict, vp: list[float]) -> bool:
-    bbox = cfg.get("bbox")
-    if not bbox or len(bbox) != 4:
-        return False
-    mn_lon, mn_lat, mx_lon, mx_lat = [float(v) for v in bbox]
-    return not (mx_lon < vp[0] or mn_lon > vp[2] or mx_lat < vp[1] or mn_lat > vp[3])
-
-
-def bbox_area(cfg: dict, vp: list[float]) -> float:
-    bbox = cfg.get("bbox")
-    if not bbox or len(bbox) != 4:
-        return 0.0
-    mn_lon, mn_lat, mx_lon, mx_lat = [float(v) for v in bbox]
-    w = max(0.0, min(mx_lon, vp[2]) - max(mn_lon, vp[0]))
-    h = max(0.0, min(mx_lat, vp[3]) - max(mn_lat, vp[1]))
-    return w * h
-
-
-def fallback_region(manifests: set[str]) -> str:
-    if DEFAULT_REGION in manifests and DEFAULT_REGION != "global":
-        return DEFAULT_REGION
-    detail = sorted(r for r in manifests if r != "global")
-    if detail:
-        return detail[0]
-    return "global" if "global" in manifests else DEFAULT_REGION
-
-
-def point_region(query: dict, configured: dict, manifests: set[str]) -> str | None:
-    lon = query_float(query, "lon")
-    lat = query_float(query, "lat")
-    if lon is None or lat is None:
-        return None
-    for rid, rcfg in configured.items():
-        if rid == "global" or rid not in manifests:
-            continue
-        if bbox_contains(rcfg, lon, lat):
-            return rid
-    return None
-
-
-def bbox_regions(query: dict, configured: dict, manifests: set[str]) -> list[str]:
-    vp   = query_bbox(query)
-    zoom = query_float(query, "zoom")
-    if not vp or (zoom is not None and zoom < AUTO_BBOX_MIN_ZOOM):
-        return []
-    matches = [
-        (rid, bbox_area(rcfg, vp))
-        for rid, rcfg in configured.items()
-        if rid != "global" and rid in manifests and bbox_intersects(rcfg, vp)
-    ]
-    matches.sort(key=lambda x: (-x[1], x[0]))
-    return [rid for rid, _ in matches[:MAX_AUTO_REGIONS]]
-
-
-def resolve_regions(query: dict) -> list[str]:
-    manifests  = manifest_region_ids()
-    configured = load_regions().get("regions", {})
-    regions    = bbox_regions(query, configured, manifests)
-    if regions:
-        return regions
-    region = point_region(query, configured, manifests)
-    if region:
-        return [region]
-    return [fallback_region(manifests)]
-
-
-def resolve_region(query: dict) -> str:
-    return resolve_regions(query)[0]
-
-
-# ─── Tileset / source helpers ─────────────────────────────────────────────────
-
-def pmtiles_url(raw: str) -> str:
-    return raw if raw.startswith("pmtiles://") else f"pmtiles://{raw}"
-
-
-def source_entry(tileset: dict) -> dict:
-    return {
-        "type": "vector",
-        "url": pmtiles_url(tileset["url"]),
-        "minzoom": tileset.get("minzoom", 0),
-        "maxzoom": tileset.get("maxzoom", 14),
-    }
-
-
+    bbox = cfg.get("bbox")
+
+    if not bbox or len(bbox) != 4:
+
+        return False
+
+    mn_lon, mn_lat, mx_lon, mx_lat = [float(v) for v in bbox]
+
+    return mn_lon <= lon <= mx_lon and mn_lat <= lat <= mx_lat
+
+
+
+
+
+def bbox_intersects(cfg: dict, vp: list[float]) -> bool:
+
+    bbox = cfg.get("bbox")
+
+    if not bbox or len(bbox) != 4:
+
+        return False
+
+    mn_lon, mn_lat, mx_lon, mx_lat = [float(v) for v in bbox]
+
+    return not (mx_lon < vp[0] or mn_lon > vp[2] or mx_lat < vp[1] or mn_lat > vp[3])
+
+
+
+
+
+def bbox_area(cfg: dict, vp: list[float]) -> float:
+
+    bbox = cfg.get("bbox")
+
+    if not bbox or len(bbox) != 4:
+
+        return 0.0
+
+    mn_lon, mn_lat, mx_lon, mx_lat = [float(v) for v in bbox]
+
+    w = max(0.0, min(mx_lon, vp[2]) - max(mn_lon, vp[0]))
+
+    h = max(0.0, min(mx_lat, vp[3]) - max(mn_lat, vp[1]))
+
+    return w * h
+
+
+
+
+
+def fallback_region(manifests: set[str]) -> str:
+
+    if DEFAULT_REGION in manifests and DEFAULT_REGION != "global":
+
+        return DEFAULT_REGION
+
+    detail = sorted(r for r in manifests if r != "global")
+
+    if detail:
+
+        return detail[0]
+
+    return "global" if "global" in manifests else DEFAULT_REGION
+
+
+
+
+
+def point_region(query: dict, configured: dict, manifests: set[str]) -> str | None:
+
+    lon = query_float(query, "lon")
+
+    lat = query_float(query, "lat")
+
+    if lon is None or lat is None:
+
+        return None
+
+    for rid, rcfg in configured.items():
+
+        if rid == "global" or rid not in manifests:
+
+            continue
+
+        if bbox_contains(rcfg, lon, lat):
+
+            return rid
+
+    return None
+
+
+
+
+
+def bbox_regions(query: dict, configured: dict, manifests: set[str]) -> list[str]:
+
+    vp   = query_bbox(query)
+
+    zoom = query_float(query, "zoom")
+
+    if not vp or (zoom is not None and zoom < AUTO_BBOX_MIN_ZOOM):
+
+        return []
+
+    matches = [
+
+        (rid, bbox_area(rcfg, vp))
+
+        for rid, rcfg in configured.items()
+
+        if rid != "global" and rid in manifests and bbox_intersects(rcfg, vp)
+
+    ]
+
+    matches.sort(key=lambda x: (-x[1], x[0]))
+
+    return [rid for rid, _ in matches[:MAX_AUTO_REGIONS]]
+
+
+
+
+
+def resolve_regions(query: dict) -> list[str]:
+
+    manifests  = manifest_region_ids()
+
+    configured = load_regions().get("regions", {})
+
+    regions    = bbox_regions(query, configured, manifests)
+
+    if regions:
+
+        return regions
+
+    region = point_region(query, configured, manifests)
+
+    if region:
+
+        return [region]
+
+    return [fallback_region(manifests)]
+
+
+
+
+
+def resolve_region(query: dict) -> str:
+
+    return resolve_regions(query)[0]
+
+
+
+
+
+# ─── Tileset / source helpers ─────────────────────────────────────────────────
+
+
+
+def pmtiles_url(raw: str) -> str:
+
+    return raw if raw.startswith("pmtiles://") else f"pmtiles://{raw}"
+
+
+
+
+
+def source_entry(tileset: dict) -> dict:
+
+    return {
+
+        "type": "vector",
+
+        "url": pmtiles_url(tileset["url"]),
+
+        "minzoom": tileset.get("minzoom", 0),
+
+        "maxzoom": tileset.get("maxzoom", 14),
+
+    }
+
+
+
+
+
 def validation_path_for(tileset: dict) -> Path | None:
     key = tileset.get("key")
     return (OUTPUT_DIR / key).with_suffix(".validation.json") if key else None
@@ -578,439 +839,862 @@ def tileset_metadata(region: str, tileset_id: str, tileset: dict, manifest: dict
         "exists": path.exists(),
         "vector_layers": tileset_layers(tileset),
     }
-
-
-def style_bounds(tilesets: dict) -> list[float] | None:
-    for name in ("basemap", "pois", "global"):
-        if name in tilesets:
-            b = tileset_bounds(tilesets[name])
-            if b:
-                return b
-    return None
-
-
+
+
+
+
+def style_bounds(tilesets: dict) -> list[float] | None:
+
+    for name in ("basemap", "pois", "global"):
+
+        if name in tilesets:
+
+            b = tileset_bounds(tilesets[name])
+
+            if b:
+
+                return b
+
+    return None
+
+
+
+
+
 def source_layers_for(tilesets: dict) -> dict[str, set[str] | None]:
     result: dict[str, set[str] | None] = {}
     for src_name, tileset in tilesets.items():
         meta = validation_for(tileset).get("metadata_layers")
         result[src_name] = {str(l) for l in meta} if isinstance(meta, list) else None
     return result
-
-
-def layer_allowed(layer: dict, allowed: set[str] | None) -> bool:
-    src_layer = layer.get("source-layer")
-    return not (allowed is not None and src_layer and src_layer not in allowed)
-
-
-def filter_layers(layers: list[dict], sources: dict, src_layers: dict) -> list[dict]:
-    out = []
-    for layer in layers:
-        src = layer.get("source")
-        if not src:
-            out.append(layer)
-            continue
-        if src not in sources:
-            continue
-        if not layer_allowed(layer, src_layers.get(src)):
-            continue
-        out.append(layer)
-    return out
-
-
-def center_from_bounds(bounds: list[float]) -> list[float]:
-    return [(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2]
-
-
-def union_bounds(all_bounds: list[list[float]]) -> list[float] | None:
-    valid = [b for b in all_bounds if b and len(b) == 4]
-    if not valid:
-        return None
-    return [
-        min(b[0] for b in valid), min(b[1] for b in valid),
-        max(b[2] for b in valid), max(b[3] for b in valid),
-    ]
-
-
-# ─── Layer zoom continuity fix ────────────────────────────────────────────────
-# This is the core fix for elements disappearing on zoom.
-# The global layers fade OUT at zoom 6 and basemap layers fade IN at zoom 6.
-# Without overlap, there is a "gap" where neither is visible.
-# We create a smooth 1-zoom handoff band so coverage is always complete.
-
+
+
+
+
+def layer_allowed(layer: dict, allowed: set[str] | None) -> bool:
+
+    src_layer = layer.get("source-layer")
+
+    return not (allowed is not None and src_layer and src_layer not in allowed)
+
+
+
+
+
+def filter_layers(layers: list[dict], sources: dict, src_layers: dict) -> list[dict]:
+
+    out = []
+
+    for layer in layers:
+
+        src = layer.get("source")
+
+        if not src:
+
+            out.append(layer)
+
+            continue
+
+        if src not in sources:
+
+            continue
+
+        if not layer_allowed(layer, src_layers.get(src)):
+
+            continue
+
+        out.append(layer)
+
+    return out
+
+
+
+
+
+def center_from_bounds(bounds: list[float]) -> list[float]:
+
+    return [(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2]
+
+
+
+
+
+def union_bounds(all_bounds: list[list[float]]) -> list[float] | None:
+
+    valid = [b for b in all_bounds if b and len(b) == 4]
+
+    if not valid:
+
+        return None
+
+    return [
+
+        min(b[0] for b in valid), min(b[1] for b in valid),
+
+        max(b[2] for b in valid), max(b[3] for b in valid),
+
+    ]
+
+
+
+
+
+# ─── Layer zoom continuity fix ────────────────────────────────────────────────
+
+# This is the core fix for elements disappearing on zoom.
+
+# The global layers fade OUT at zoom 6 and basemap layers fade IN at zoom 6.
+
+# Without overlap, there is a "gap" where neither is visible.
+
+# We create a smooth 1-zoom handoff band so coverage is always complete.
+
+
+
 GLOBAL_MAX_ZOOM    = 8      # global layers are hidden above this zoom
 BASEMAP_MIN_ZOOM   = 5      # basemap layers are visible from this zoom
 TRANSITION_BAND    = 2.0    # overlap zone (zoom units) where both render
-
-def _zoom_transition_paint(base_paint: dict, fade_in: bool, start: float, end: float) -> dict:
-    """
-    Inject a zoom-based opacity expression so layers fade in/out smoothly
-    instead of popping on or off at a hard zoom threshold.
-    """
-    paint = dict(base_paint)
-    opacity_key = next(
-        (k for k in paint if k.endswith("-opacity") or k == "opacity"),
-        None,
-    )
-    base_opacity = paint.get(opacity_key, 1.0) if opacity_key else 1.0
-    # If base_opacity is already an expression, wrap it conservatively
-    if isinstance(base_opacity, list):
-        base_opacity = 1.0
-
-    fade_expr = [
-        "interpolate", ["linear"], ["zoom"],
-        start, 0.0 if fade_in else float(base_opacity),
-        end,   float(base_opacity) if fade_in else 0.0,
-    ]
-    if opacity_key:
-        paint[opacity_key] = fade_expr
-    else:
-        paint["fill-opacity"] = fade_expr  # fallback
-    return paint
-
-
-def add_global_layers(layers: list[dict]) -> None:
-    """
-    Global base layers that are always visible at low zoom.
-    They fade OUT as the user zooms in (not hard-cut).
-    """
-    fade_start = GLOBAL_MAX_ZOOM - TRANSITION_BAND   # e.g. 5.5
-    fade_end   = GLOBAL_MAX_ZOOM                      # e.g. 7
-
-    layers.extend([
-        {
-            "id": "global-countries",
-            "type": "fill",
-            "source": "global",
-            "source-layer": "countries",
-            "maxzoom": GLOBAL_MAX_ZOOM + 1,           # render slot stays open
-            "paint": _zoom_transition_paint(
-                {"fill-color": "#eef0e8", "fill-opacity": 1.0},
-                fade_in=False, start=fade_start, end=fade_end,
-            ),
-        },
-        {
-            "id": "global-water",
-            "type": "fill",
-            "source": "global",
-            "source-layer": "water",
-            "maxzoom": GLOBAL_MAX_ZOOM + 1,
-            "paint": _zoom_transition_paint(
-                {"fill-color": "#a9cfe7", "fill-opacity": 0.9},
-                fade_in=False, start=fade_start, end=fade_end,
-            ),
-        },
-        {
-            "id": "global-major-roads",
-            "type": "line",
-            "source": "global",
-            "source-layer": "major_roads",
-            "maxzoom": GLOBAL_MAX_ZOOM + 1,
-            "paint": {
-                "line-color": "#d19947",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 0, 0.2, 5, 1.4, 8, 2.2],
-                "line-opacity": [
-                    "interpolate", ["linear"], ["zoom"],
-                    fade_start, 1.0,
-                    fade_end, 0.0,
-                ],
-            },
-        },
-        {
-            "id": "global-boundaries",
-            "type": "line",
-            "source": "global",
-            "source-layer": "country_boundaries",
-            "maxzoom": GLOBAL_MAX_ZOOM + 1,
-            "paint": {
-                "line-color": "#7f858a",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 0, 0.2, 5, 0.8, 8, 1.1],
-                "line-opacity": [
-                    "interpolate", ["linear"], ["zoom"],
-                    fade_start, 0.9,
-                    fade_end, 0.0,
-                ],
-                "line-dasharray": [2, 2],
-            },
-        },
-    ])
-
-
-def add_basemap_layers(layers: list[dict]) -> None:
-    """
-    Detailed basemap layers.  They fade IN as the user zooms in,
-    starting before the global layers have fully faded so there's
-    always something visible.
-    """
-    fade_start = BASEMAP_MIN_ZOOM
-    fade_end   = BASEMAP_MIN_ZOOM + TRANSITION_BAND   # e.g. 6.5
-
-    layers.extend([
-        {
-            "id": "landuse",
-            "type": "fill",
-            "source": "basemap",
-            "source-layer": "landuse",
-            "minzoom": BASEMAP_MIN_ZOOM,
-            "paint": {
-                "fill-color": [
-                    "match", ["get", "landuse_class"],
-                    "park", "#b9d8a8", "garden", "#b9d8a8",
-                    "grassland", "#c9ddb1", "wood", "#9ec597",
-                    "scrub", "#b7c99b", "sand", "#e7d7a7",
-                    "desert", "#ead8ab", "#d8d6c8",
-                ],
-                "fill-opacity": [
-                    "interpolate", ["linear"], ["zoom"],
-                    fade_start, 0.0, fade_end, 0.55,
-                ],
-            },
-        },
-        {
-            "id": "water",
-            "type": "fill",
-            "source": "basemap",
-            "source-layer": "water",
-            "minzoom": BASEMAP_MIN_ZOOM,
-            "paint": {
-                "fill-color": "#7db9d8",
-                "fill-opacity": [
-                    "interpolate", ["linear"], ["zoom"],
-                    fade_start, 0.0, fade_end, 0.85,
-                ],
-            },
-        },
-        {
-            "id": "boundaries",
-            "type": "line",
-            "source": "basemap",
-            "source-layer": "boundaries",
-            "minzoom": BASEMAP_MIN_ZOOM,
-            "paint": {
-                "line-color": "#8c9196",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 14, 1.2],
-                "line-dasharray": [2, 2],
-                "line-opacity": [
-                    "interpolate", ["linear"], ["zoom"],
-                    fade_start, 0.0, fade_end, 1.0,
-                ],
-            },
-        },
-        {
-            "id": "roads-casing",
-            "type": "line",
-            "source": "basemap",
-            "source-layer": "roads",
-            "minzoom": BASEMAP_MIN_ZOOM,
-            "paint": {
-                "line-color": "#ffffff",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.0, 10, 2.0, 14, 6.0],
-            },
-        },
-        {
-            "id": "roads",
-            "type": "line",
-            "source": "basemap",
-            "source-layer": "roads",
-            "minzoom": BASEMAP_MIN_ZOOM,
-            "paint": {
-                "line-color": [
-                    "match", ["get", "road_class"],
-                    "motorway", "#cf6f3f", "trunk", "#d58b3f",
-                    "primary", "#d6a744", "secondary", "#c7b15a",
-                    "#9da4a7",
-                ],
-                "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.55, 10, 1.25, 14, 4.0],
-            },
-        },
-        {
-            "id": "buildings",
-            "type": "fill",
-            "source": "basemap",
-            "source-layer": "buildings",
-            "minzoom": 13,
-            "paint": {"fill-color": "#b8aaa1", "fill-opacity": 0.75},
-        },
-        {
-            "id": "building-outlines",
-            "type": "line",
-            "source": "basemap",
-            "source-layer": "buildings",
-            "minzoom": 14,
-            "paint": {"line-color": "#8f8178", "line-width": 0.4},
-        },
-    ])
-
-
-def add_poi_layers(layers: list[dict]) -> None:
-    layers.extend([
-        {
-            "id": "pois",
-            "type": "circle",
-            "source": "pois",
-            "source-layer": "pois",
-            "minzoom": 10,
-            "paint": {
-                "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 16, 7.0],
-                "circle-color": [
-                    "match", ["get", "category"],
-                    "restaurant", "#d75d4a", "cafe", "#9b6b43",
-                    "shop", "#5d7fbf", "hotel", "#8062b7",
-                    "fuel", "#528f70", "#394c59",
-                ],
-                "circle-stroke-color": "#ffffff",
-                "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 0.5, 16, 1.5],
-                "circle-opacity": 0.88,
-            },
-        }
-    ])
-
-
-# ─── Style builders ───────────────────────────────────────────────────────────
-
-def layers_with_global(template_layers: list[dict], has_global: bool) -> list[dict]:
-    layers = deepcopy(template_layers)
-    if not has_global or any(l.get("source") == "global" for l in layers):
-        return layers
-    result   = []
-    inserted = False
-    for layer in layers:
-        result.append(layer)
-        if not inserted and layer.get("type") == "background":
-            add_global_layers(result)
-            inserted = True
-    if not inserted:
-        add_global_layers(result)
-    return result
-
-
-def region_source_name(region: str, tileset_name: str) -> str:
-    return f"{tileset_name}-{safe_id(region)}"
-
-
-def expand_layers_for_regions(
-    template_layers: list[dict],
-    sources: dict,
-    src_layers: dict,
-    regions: list[str],
-) -> list[dict]:
-    expanded = []
-    for layer in template_layers:
-        src = layer.get("source")
-        if src not in ("basemap", "pois"):
-            if src and src not in sources:
-                continue
-            if src and not layer_allowed(layer, src_layers.get(src)):
-                continue
-            expanded.append(layer)
-            continue
-        for region in regions:
-            rsrc = region_source_name(region, src)
-            if rsrc not in sources:
-                continue
-            rl = deepcopy(layer)
-            rl["id"]     = f"{layer['id']}-{safe_id(region)}"
-            rl["source"] = rsrc
-            if not layer_allowed(rl, src_layers.get(rsrc)):
-                continue
-            expanded.append(rl)
-    return expanded
-
-
-def _apply_metadata(style: dict, manifest: dict, region: str, regions: list[str],
-                    style_id: str, bounds: list[float] | None, tilesets: dict) -> None:
-    meta = style.get("metadata", {})
-    meta.update({
-        "schema_version": manifest.get("schema_version"),
-        "region":         region,
-        "regions":        regions,
-        "style_id":       style_id,
-        "style_key":      f"{style_id}:{','.join(regions)}",
-        "last_updated":   manifest.get("last_updated"),
-        "bounds":         bounds,
-        "tilesets":       tilesets,
-    })
-    style["metadata"] = meta
-
-
-def build_style(region: str, style_id: str = DEFAULT_STYLE) -> dict:
-    manifest = load_manifest(region)
-    tilesets = manifest.get("tilesets", {})
-    bounds   = style_bounds(tilesets)
-    sources  = {}
-
-    for name in ("global", "basemap", "pois"):
-        if name in tilesets:
-            sources[name] = source_entry(tilesets[name])
-
-    style          = deepcopy(load_style_template(style_id))
-    style["sources"] = sources
-    style["center"]  = center_from_bounds(bounds) if bounds else region_center(region)
-    style["zoom"]    = 10 if bounds and region != "global" else (8 if region != "global" else 2)
-
-    layers = layers_with_global(style.get("layers", []), "global" in sources)
-    style["layers"] = filter_layers(layers, sources, source_layers_for(tilesets))
-
-    _apply_metadata(style, manifest, region, [region], style_id, bounds, tilesets)
-    style["metadata"]["mode"] = "single"
-    return style
-
-
-def global_tileset_for(manifests_list: list[dict]) -> dict | None:
-    for manifest in manifests_list:
-        tileset = manifest.get("tilesets", {}).get("global")
-        if tileset:
-            return tileset
-    # separate lookup — avoids shadowing loop variable
-    global_ids = manifest_region_ids()
-    if "global" in global_ids:
-        return load_manifest("global").get("tilesets", {}).get("global")
-    return None
-
-
-def build_auto_style(query: dict, style_id: str = DEFAULT_STYLE) -> dict:
-    regions = resolve_regions(query)
-    if len(regions) == 1:
-        style = build_style(regions[0], style_id)
-        style["metadata"]["mode"] = "auto"
-        return style
-
-    manifests_list = [load_manifest(r) for r in regions]
-    sources: dict        = {}
-    source_tilesets: dict = {}
-    detail_bounds: list  = []
-    last_updated: list   = []
-
-    global_ts = global_tileset_for(manifests_list)
-    if global_ts:
-        sources["global"]        = source_entry(global_ts)
-        source_tilesets["global"] = global_ts
-
-    for region, manifest in zip(regions, manifests_list):
-        lu = manifest.get("last_updated")
-        if lu:
-            last_updated.append(lu)
-        for ts_name in ("basemap", "pois"):
-            tileset = manifest.get("tilesets", {}).get(ts_name)
-            if not tileset:
-                continue
-            sname = region_source_name(region, ts_name)
-            sources[sname]        = source_entry(tileset)
-            source_tilesets[sname] = tileset
-            b = tileset_bounds(tileset)
-            if b:
-                detail_bounds.append(b)
-
-    bounds = union_bounds(detail_bounds)
-    style  = deepcopy(load_style_template(style_id))
-    style["sources"] = sources
+
+
+def _zoom_transition_paint(base_paint: dict, fade_in: bool, start: float, end: float) -> dict:
+
+    """
+
+    Inject a zoom-based opacity expression so layers fade in/out smoothly
+
+    instead of popping on or off at a hard zoom threshold.
+
+    """
+
+    paint = dict(base_paint)
+
+    opacity_key = next(
+
+        (k for k in paint if k.endswith("-opacity") or k == "opacity"),
+
+        None,
+
+    )
+
+    base_opacity = paint.get(opacity_key, 1.0) if opacity_key else 1.0
+
+    # If base_opacity is already an expression, wrap it conservatively
+
+    if isinstance(base_opacity, list):
+
+        base_opacity = 1.0
+
+
+
+    fade_expr = [
+
+        "interpolate", ["linear"], ["zoom"],
+
+        start, 0.0 if fade_in else float(base_opacity),
+
+        end,   float(base_opacity) if fade_in else 0.0,
+
+    ]
+
+    if opacity_key:
+
+        paint[opacity_key] = fade_expr
+
+    else:
+
+        paint["fill-opacity"] = fade_expr  # fallback
+
+    return paint
+
+
+
+
+
+def add_global_layers(layers: list[dict]) -> None:
+
+    """
+
+    Global base layers that are always visible at low zoom.
+
+    They fade OUT as the user zooms in (not hard-cut).
+
+    """
+
+    fade_start = GLOBAL_MAX_ZOOM - TRANSITION_BAND   # e.g. 5.5
+
+    fade_end   = GLOBAL_MAX_ZOOM                      # e.g. 7
+
+
+
+    layers.extend([
+
+        {
+
+            "id": "global-countries",
+
+            "type": "fill",
+
+            "source": "global",
+
+            "source-layer": "countries",
+
+            "maxzoom": GLOBAL_MAX_ZOOM + 1,           # render slot stays open
+
+            "paint": _zoom_transition_paint(
+
+                {"fill-color": "#eef0e8", "fill-opacity": 1.0},
+
+                fade_in=False, start=fade_start, end=fade_end,
+
+            ),
+
+        },
+
+        {
+
+            "id": "global-water",
+
+            "type": "fill",
+
+            "source": "global",
+
+            "source-layer": "water",
+
+            "maxzoom": GLOBAL_MAX_ZOOM + 1,
+
+            "paint": _zoom_transition_paint(
+
+                {"fill-color": "#a9cfe7", "fill-opacity": 0.9},
+
+                fade_in=False, start=fade_start, end=fade_end,
+
+            ),
+
+        },
+
+        {
+
+            "id": "global-major-roads",
+
+            "type": "line",
+
+            "source": "global",
+
+            "source-layer": "major_roads",
+
+            "maxzoom": GLOBAL_MAX_ZOOM + 1,
+
+            "paint": {
+
+                "line-color": "#d19947",
+
+                "line-width": ["interpolate", ["linear"], ["zoom"], 0, 0.2, 5, 1.4, 8, 2.2],
+
+                "line-opacity": [
+
+                    "interpolate", ["linear"], ["zoom"],
+
+                    fade_start, 1.0,
+
+                    fade_end, 0.0,
+
+                ],
+
+            },
+
+        },
+
+        {
+
+            "id": "global-boundaries",
+
+            "type": "line",
+
+            "source": "global",
+
+            "source-layer": "country_boundaries",
+
+            "maxzoom": GLOBAL_MAX_ZOOM + 1,
+
+            "paint": {
+
+                "line-color": "#7f858a",
+
+                "line-width": ["interpolate", ["linear"], ["zoom"], 0, 0.2, 5, 0.8, 8, 1.1],
+
+                "line-opacity": [
+
+                    "interpolate", ["linear"], ["zoom"],
+
+                    fade_start, 0.9,
+
+                    fade_end, 0.0,
+
+                ],
+
+                "line-dasharray": [2, 2],
+
+            },
+
+        },
+
+    ])
+
+
+
+
+
+def add_basemap_layers(layers: list[dict]) -> None:
+
+    """
+
+    Detailed basemap layers.  They fade IN as the user zooms in,
+
+    starting before the global layers have fully faded so there's
+
+    always something visible.
+
+    """
+
+    fade_start = BASEMAP_MIN_ZOOM
+
+    fade_end   = BASEMAP_MIN_ZOOM + TRANSITION_BAND   # e.g. 6.5
+
+
+
+    layers.extend([
+
+        {
+
+            "id": "landuse",
+
+            "type": "fill",
+
+            "source": "basemap",
+
+            "source-layer": "landuse",
+
+            "minzoom": BASEMAP_MIN_ZOOM,
+
+            "paint": {
+
+                "fill-color": [
+
+                    "match", ["get", "landuse_class"],
+
+                    "park", "#b9d8a8", "garden", "#b9d8a8",
+
+                    "grassland", "#c9ddb1", "wood", "#9ec597",
+
+                    "scrub", "#b7c99b", "sand", "#e7d7a7",
+
+                    "desert", "#ead8ab", "#d8d6c8",
+
+                ],
+
+                "fill-opacity": [
+
+                    "interpolate", ["linear"], ["zoom"],
+
+                    fade_start, 0.0, fade_end, 0.55,
+
+                ],
+
+            },
+
+        },
+
+        {
+
+            "id": "water",
+
+            "type": "fill",
+
+            "source": "basemap",
+
+            "source-layer": "water",
+
+            "minzoom": BASEMAP_MIN_ZOOM,
+
+            "paint": {
+
+                "fill-color": "#7db9d8",
+
+                "fill-opacity": [
+
+                    "interpolate", ["linear"], ["zoom"],
+
+                    fade_start, 0.0, fade_end, 0.85,
+
+                ],
+
+            },
+
+        },
+
+        {
+
+            "id": "boundaries",
+
+            "type": "line",
+
+            "source": "basemap",
+
+            "source-layer": "boundaries",
+
+            "minzoom": BASEMAP_MIN_ZOOM,
+
+            "paint": {
+
+                "line-color": "#8c9196",
+
+                "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 14, 1.2],
+
+                "line-dasharray": [2, 2],
+
+                "line-opacity": [
+
+                    "interpolate", ["linear"], ["zoom"],
+
+                    fade_start, 0.0, fade_end, 1.0,
+
+                ],
+
+            },
+
+        },
+
+        {
+
+            "id": "roads-casing",
+
+            "type": "line",
+
+            "source": "basemap",
+
+            "source-layer": "roads",
+
+            "minzoom": BASEMAP_MIN_ZOOM,
+
+            "paint": {
+
+                "line-color": "#ffffff",
+
+                "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.0, 10, 2.0, 14, 6.0],
+
+            },
+
+        },
+
+        {
+
+            "id": "roads",
+
+            "type": "line",
+
+            "source": "basemap",
+
+            "source-layer": "roads",
+
+            "minzoom": BASEMAP_MIN_ZOOM,
+
+            "paint": {
+
+                "line-color": [
+
+                    "match", ["get", "road_class"],
+
+                    "motorway", "#cf6f3f", "trunk", "#d58b3f",
+
+                    "primary", "#d6a744", "secondary", "#c7b15a",
+
+                    "#9da4a7",
+
+                ],
+
+                "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.55, 10, 1.25, 14, 4.0],
+
+            },
+
+        },
+
+        {
+
+            "id": "buildings",
+
+            "type": "fill",
+
+            "source": "basemap",
+
+            "source-layer": "buildings",
+
+            "minzoom": 13,
+
+            "paint": {"fill-color": "#b8aaa1", "fill-opacity": 0.75},
+
+        },
+
+        {
+
+            "id": "building-outlines",
+
+            "type": "line",
+
+            "source": "basemap",
+
+            "source-layer": "buildings",
+
+            "minzoom": 14,
+
+            "paint": {"line-color": "#8f8178", "line-width": 0.4},
+
+        },
+
+    ])
+
+
+
+
+
+def add_poi_layers(layers: list[dict]) -> None:
+
+    layers.extend([
+
+        {
+
+            "id": "pois",
+
+            "type": "circle",
+
+            "source": "pois",
+
+            "source-layer": "pois",
+
+            "minzoom": 10,
+
+            "paint": {
+
+                "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 16, 7.0],
+
+                "circle-color": [
+
+                    "match", ["get", "category"],
+
+                    "restaurant", "#d75d4a", "cafe", "#9b6b43",
+
+                    "shop", "#5d7fbf", "hotel", "#8062b7",
+
+                    "fuel", "#528f70", "#394c59",
+
+                ],
+
+                "circle-stroke-color": "#ffffff",
+
+                "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 0.5, 16, 1.5],
+
+                "circle-opacity": 0.88,
+
+            },
+
+        }
+
+    ])
+
+
+
+
+
+# ─── Style builders ───────────────────────────────────────────────────────────
+
+
+
+def layers_with_global(template_layers: list[dict], has_global: bool) -> list[dict]:
+
+    layers = deepcopy(template_layers)
+
+    if not has_global or any(l.get("source") == "global" for l in layers):
+
+        return layers
+
+    result   = []
+
+    inserted = False
+
+    for layer in layers:
+
+        result.append(layer)
+
+        if not inserted and layer.get("type") == "background":
+
+            add_global_layers(result)
+
+            inserted = True
+
+    if not inserted:
+
+        add_global_layers(result)
+
+    return result
+
+
+
+
+
+def region_source_name(region: str, tileset_name: str) -> str:
+
+    return f"{tileset_name}-{safe_id(region)}"
+
+
+
+
+
+def expand_layers_for_regions(
+
+    template_layers: list[dict],
+
+    sources: dict,
+
+    src_layers: dict,
+
+    regions: list[str],
+
+) -> list[dict]:
+
+    expanded = []
+
+    for layer in template_layers:
+
+        src = layer.get("source")
+
+        if src not in ("basemap", "pois"):
+
+            if src and src not in sources:
+
+                continue
+
+            if src and not layer_allowed(layer, src_layers.get(src)):
+
+                continue
+
+            expanded.append(layer)
+
+            continue
+
+        for region in regions:
+
+            rsrc = region_source_name(region, src)
+
+            if rsrc not in sources:
+
+                continue
+
+            rl = deepcopy(layer)
+
+            rl["id"]     = f"{layer['id']}-{safe_id(region)}"
+
+            rl["source"] = rsrc
+
+            if not layer_allowed(rl, src_layers.get(rsrc)):
+
+                continue
+
+            expanded.append(rl)
+
+    return expanded
+
+
+
+
+
+def _apply_metadata(style: dict, manifest: dict, region: str, regions: list[str],
+
+                    style_id: str, bounds: list[float] | None, tilesets: dict) -> None:
+
+    meta = style.get("metadata", {})
+
+    meta.update({
+
+        "schema_version": manifest.get("schema_version"),
+
+        "region":         region,
+
+        "regions":        regions,
+
+        "style_id":       style_id,
+
+        "style_key":      f"{style_id}:{','.join(regions)}",
+
+        "last_updated":   manifest.get("last_updated"),
+
+        "bounds":         bounds,
+
+        "tilesets":       tilesets,
+
+    })
+
+    style["metadata"] = meta
+
+
+
+
+
+def build_style(region: str, style_id: str = DEFAULT_STYLE) -> dict:
+
+    manifest = load_manifest(region)
+
+    tilesets = manifest.get("tilesets", {})
+
+    bounds   = style_bounds(tilesets)
+
+    sources  = {}
+
+
+
+    for name in ("global", "basemap", "pois"):
+
+        if name in tilesets:
+
+            sources[name] = source_entry(tilesets[name])
+
+
+
+    style          = deepcopy(load_style_template(style_id))
+
+    style["sources"] = sources
+
+    style["center"]  = center_from_bounds(bounds) if bounds else region_center(region)
+
+    style["zoom"]    = 10 if bounds and region != "global" else (8 if region != "global" else 2)
+
+
+
+    layers = layers_with_global(style.get("layers", []), "global" in sources)
+
+    style["layers"] = filter_layers(layers, sources, source_layers_for(tilesets))
+
+
+
+    _apply_metadata(style, manifest, region, [region], style_id, bounds, tilesets)
+
+    style["metadata"]["mode"] = "single"
+
+    return style
+
+
+
+
+
+def global_tileset_for(manifests_list: list[dict]) -> dict | None:
+
+    for manifest in manifests_list:
+
+        tileset = manifest.get("tilesets", {}).get("global")
+
+        if tileset:
+
+            return tileset
+
+    # separate lookup — avoids shadowing loop variable
+
+    global_ids = manifest_region_ids()
+
+    if "global" in global_ids:
+
+        return load_manifest("global").get("tilesets", {}).get("global")
+
+    return None
+
+
+
+
+
+def build_auto_style(query: dict, style_id: str = DEFAULT_STYLE) -> dict:
+
+    regions = resolve_regions(query)
+
+    if len(regions) == 1:
+
+        style = build_style(regions[0], style_id)
+
+        style["metadata"]["mode"] = "auto"
+
+        return style
+
+
+
+    manifests_list = [load_manifest(r) for r in regions]
+
+    sources: dict        = {}
+
+    source_tilesets: dict = {}
+
+    detail_bounds: list  = []
+
+    last_updated: list   = []
+
+
+
+    global_ts = global_tileset_for(manifests_list)
+
+    if global_ts:
+
+        sources["global"]        = source_entry(global_ts)
+
+        source_tilesets["global"] = global_ts
+
+
+
+    for region, manifest in zip(regions, manifests_list):
+
+        lu = manifest.get("last_updated")
+
+        if lu:
+
+            last_updated.append(lu)
+
+        for ts_name in ("basemap", "pois"):
+
+            tileset = manifest.get("tilesets", {}).get(ts_name)
+
+            if not tileset:
+
+                continue
+
+            sname = region_source_name(region, ts_name)
+
+            sources[sname]        = source_entry(tileset)
+
+            source_tilesets[sname] = tileset
+
+            b = tileset_bounds(tileset)
+
+            if b:
+
+                detail_bounds.append(b)
+
+
+
+    bounds = union_bounds(detail_bounds)
+
+    style  = deepcopy(load_style_template(style_id))
+
+    style["sources"] = sources
+
     style["center"] = query_center(query) or (center_from_bounds(bounds) if bounds else region_center(regions[0]))
-    style["zoom"] = query_float(query, "zoom") or (10 if bounds else 8)
-
-    layers = layers_with_global(style.get("layers", []), "global" in sources)
-    style["layers"] = expand_layers_for_regions(
-        layers, sources, source_layers_for(source_tilesets), regions
-    )
-
+    style["zoom"] = query_float(query, "zoom") or (10 if bounds else 8)
+
+
+
+    layers = layers_with_global(style.get("layers", []), "global" in sources)
+
+    style["layers"] = expand_layers_for_regions(
+
+        layers, sources, source_layers_for(source_tilesets), regions
+
+    )
+
+
+
     fake_manifest = {"schema_version": 1, "last_updated": max(last_updated) if last_updated else None}
     _apply_metadata(style, fake_manifest, regions[0], regions, style_id, bounds, source_tilesets)
     style["metadata"]["mode"] = "auto"
@@ -1312,10 +1996,14 @@ def health_details() -> dict:
     missing = sorted({name for name, value in checks.items() if not value} | set(missing))
     ok = all(checks.values())
     return {"ok": ok, "checks": checks, "missing": missing, "warnings": warnings}
-
-
-# ─── OpenAPI spec ─────────────────────────────────────────────────────────────
-
+
+
+
+
+# ─── OpenAPI spec ─────────────────────────────────────────────────────────────
+
+
+
 def _json_response(schema_ref: dict, description: str = "OK") -> dict:
     return {
         "description": description,
@@ -1482,6 +2170,18 @@ def _openapi_components() -> dict:
                     "region": {"type": "string"},
                     "style": {"type": "string"},
                 },
+                "required": [
+                    "tilejson",
+                    "name",
+                    "scheme",
+                    "tiles",
+                    "minzoom",
+                    "maxzoom",
+                    "bounds",
+                    "format",
+                    "region",
+                    "style",
+                ],
                 "additionalProperties": True,
             },
             "MapLibreStyle": {
@@ -1499,6 +2199,7 @@ def _openapi_components() -> dict:
                     "bearing": {"type": "number"},
                     "metadata": {"type": "object"},
                 },
+                "required": ["version", "sources", "layers"],
                 "additionalProperties": True,
             },
             "ErrorResponse": {
@@ -1506,239 +2207,6 @@ def _openapi_components() -> dict:
                 "properties": {"error": {"type": "string"}},
             },
         }
-    }
-
-
-def openapi_spec() -> dict:
-    # (kept identical to original, omitted here for brevity — paste original)
-    p = _openapi_query_params()
-    ok = _json_response
-    z_param = {
-        "name": "z",
-        "in": "path",
-        "required": True,
-        "schema": {"type": "integer", "minimum": 0, "maximum": MAX_RASTER_ZOOM},
-        "description": "XYZ zoom level.",
-    }
-    x_param = {
-        "name": "x",
-        "in": "path",
-        "required": True,
-        "schema": {"type": "integer", "minimum": 0},
-        "description": "XYZ tile column.",
-    }
-    y_param = {
-        "name": "y",
-        "in": "path",
-        "required": True,
-        "schema": {"type": "integer", "minimum": 0},
-        "description": "XYZ tile row.",
-    }
-    region_query_param = {
-        "name": "region",
-        "in": "query",
-        "required": False,
-        "schema": {"type": "string", "example": "iraq"},
-        "description": "Optional fixed region id.",
-    }
-    format_param = {
-        "name": "format",
-        "in": "path",
-        "required": True,
-        "schema": {"type": "string", "enum": ["png", "webp", "jpg", "jpeg"], "default": "png"},
-        "description": "Raster image output format.",
-    }
-    format_query_param = {
-        "name": "format",
-        "in": "query",
-        "required": False,
-        "schema": {"type": "string", "enum": ["png", "webp", "jpg", "jpeg"], "default": "png"},
-        "description": "Raster image output format used in the TileJSON tile URL.",
-    }
-    raster_image_content = {
-        "image/png": {"schema": {"type": "string", "format": "binary"}},
-        "image/webp": {"schema": {"type": "string", "format": "binary"}},
-        "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
-    }
-    return {
-        "openapi": "3.0.3",
-        "info": {
-            "title": "PMTiles Map API",
-            "version": "1.0.0",
-            "description": "Local API for serving MapLibre styles, PMTiles manifests, and region resolution.",
-        },
-        "servers": [{"url": "/", "description": "Current host"}],
-        "tags": [
-            {"name": "Docs"},
-            {"name": "System"},
-            {"name": "Styles"},
-            {"name": "Regions"},
-            {"name": "Manifests"},
-            {"name": "Raster Tiles"},
-        ],
-        "paths": {
-            "/docs": {
-                "get": {
-                    "tags": ["Docs"],
-                    "summary": "Swagger UI",
-                    "operationId": "getSwaggerUi",
-                    "responses": {
-                        "200": {
-                            "description": "Swagger UI HTML",
-                            "content": {"text/html": {"schema": {"type": "string"}}},
-                        }
-                    },
-                }
-            },
-            "/api/openapi.json": {
-                "get": {
-                    "tags": ["Docs"],
-                    "summary": "OpenAPI document",
-                    "operationId": "getOpenApiSpec",
-                    "responses": {"200": ok({"type": "object"})},
-                }
-            },
-            "/api/health": {
-                "get": {
-                    "tags": ["System"],
-                    "summary": "Health check",
-                    "operationId": "getHealth",
-                    "responses": {"200": ok({"$ref": "#/components/schemas/HealthResponse"})},
-                }
-            },
-            "/api/cache/clear": {
-                "get": {
-                    "tags": ["System"],
-                    "summary": "Clear in-memory API cache",
-                    "operationId": "clearCache",
-                    "responses": {"200": ok({"$ref": "#/components/schemas/MessageResponse"})},
-                }
-            },
-            "/api/styles": {
-                "get": {
-                    "tags": ["Styles"],
-                    "summary": "List available map styles",
-                    "operationId": "listStyles",
-                    "responses": {"200": ok({"$ref": "#/components/schemas/StylesResponse"})},
-                }
-            },
-            "/api/raster/tilejson.json": {
-                "get": {
-                    "tags": ["Raster Tiles"],
-                    "summary": "Get TileJSON for the raster tiles endpoint",
-                    "operationId": "getRasterTileJson",
-                    "parameters": [region_query_param, p["style"], format_query_param],
-                    "responses": {"200": ok({"$ref": "#/components/schemas/RasterTileJson"})},
-                }
-            },
-            "/api/raster/{z}/{x}/{y}.{format}": {
-                "get": {
-                    "tags": ["Raster Tiles"],
-                    "summary": "Render a raster image tile",
-                    "description": "Renders a 256x256 raster tile from local PMTiles. If region is omitted, the API resolves it from the tile center.",
-                    "operationId": "getRasterTile",
-                    "parameters": [
-                        z_param,
-                        x_param,
-                        y_param,
-                        format_param,
-                        {
-                            "name": "region",
-                            "in": "query",
-                            "required": False,
-                            "schema": {"type": "string", "example": "iraq"},
-                            "description": "Optional fixed region id. If omitted, region is resolved from the tile center.",
-                        },
-                        p["style"],
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Raster image tile",
-                            "content": raster_image_content,
-                        },
-                        "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid tile request"),
-                        "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Tile or region not found"),
-                    },
-                }
-            },
-            "/api/raster/{region}/{z}/{x}/{y}.{format}": {
-                "get": {
-                    "tags": ["Raster Tiles"],
-                    "summary": "Render a raster image tile for one region",
-                    "operationId": "getRegionRasterTile",
-                    "parameters": [p["region"], z_param, x_param, y_param, format_param, p["style"]],
-                    "responses": {
-                        "200": {
-                            "description": "Raster image tile",
-                            "content": raster_image_content,
-                        },
-                        "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid tile request"),
-                        "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Tile or region not found"),
-                    },
-                }
-            },
-            "/api/style.json": {
-                "get": {
-                    "tags": ["Styles"],
-                    "summary": "Build an auto-resolved MapLibre style",
-                    "description": "Chooses region(s) from lon/lat or bbox and injects PMTiles sources into the selected style.",
-                    "operationId": "getAutoStyle",
-                    "parameters": [p["style"], p["lon"], p["lat"], p["zoom"], p["bbox"]],
-                    "responses": {"200": ok({"$ref": "#/components/schemas/MapLibreStyle"})},
-                }
-            },
-            "/api/style/{region}.json": {
-                "get": {
-                    "tags": ["Styles"],
-                    "summary": "Build a MapLibre style for one region",
-                    "operationId": "getRegionStyle",
-                    "parameters": [p["region"], p["style"]],
-                    "responses": {
-                        "200": ok({"$ref": "#/components/schemas/MapLibreStyle"}),
-                        "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Manifest or style not found"),
-                    },
-                }
-            },
-            "/api/regions": {
-                "get": {
-                    "tags": ["Regions"],
-                    "summary": "List configured regions",
-                    "operationId": "listRegions",
-                    "responses": {"200": ok({"$ref": "#/components/schemas/RegionsResponse"})},
-                }
-            },
-            "/api/resolve": {
-                "get": {
-                    "tags": ["Regions"],
-                    "summary": "Resolve viewport to region ids",
-                    "operationId": "resolveRegions",
-                    "parameters": [p["lon"], p["lat"], p["bbox"]],
-                    "responses": {"200": ok({"$ref": "#/components/schemas/ResolveResponse"})},
-                }
-            },
-            "/api/manifest.json": {
-                "get": {
-                    "tags": ["Manifests"],
-                    "summary": "Get auto-resolved PMTiles manifest",
-                    "operationId": "getAutoManifest",
-                    "parameters": [p["lon"], p["lat"], p["bbox"]],
-                    "responses": {"200": ok({"$ref": "#/components/schemas/Manifest"})},
-                }
-            },
-            "/api/manifest/{region}.json": {
-                "get": {
-                    "tags": ["Manifests"],
-                    "summary": "Get PMTiles manifest for one region",
-                    "operationId": "getRegionManifest",
-                    "parameters": [p["region"]],
-                    "responses": {
-                        "200": ok({"$ref": "#/components/schemas/Manifest"}),
-                        "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Manifest not found"),
-                    },
-                }
-            },
-        },
-        "components": _openapi_components(),
     }
 
 
@@ -1769,6 +2237,7 @@ def openapi_spec() -> dict:
     cache_response_headers = {
         "Cache-Control": {"schema": {"type": "string"}, "description": "Public cache policy for this response."},
         "ETag": {"schema": {"type": "string"}, "description": "Entity tag for conditional requests."},
+        "X-Request-ID": {"schema": {"type": "string"}, "description": "Global unique request identifier, preserved from request or generated on server."},
     }
     vector_response_headers = {
         **cache_response_headers,
@@ -1777,6 +2246,26 @@ def openapi_spec() -> dict:
             "description": "gzip when the stored vector tile payload is gzip-compressed.",
         },
     }
+    request_id_header = {
+        "X-Request-ID": {
+            "schema": {"type": "string"},
+            "description": "Global unique request identifier, preserved from request or generated on server.",
+        }
+    }
+
+    def ok_with_request_id(schema: dict, description: str = "OK", extra_headers: dict | None = None) -> dict:
+        headers = {**request_id_header, **(extra_headers or {})}
+        res = ok(schema, description)
+        res["headers"] = headers
+        return res
+
+    def error_response(description: str) -> dict:
+        return {
+            "description": description,
+            "headers": request_id_header,
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+        }
+
     def cached_json(schema: dict, description: str = "OK") -> dict:
         response = ok(schema, description)
         response["headers"] = cache_response_headers
@@ -1788,21 +2277,28 @@ def openapi_spec() -> dict:
             "headers": vector_response_headers,
             "content": {VECTOR_TILE_CONTENT_TYPE: {"schema": {"type": "string", "format": "binary"}}},
         },
-        "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid tile request"),
-        "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Tile, region, or tileset not found"),
+        "400": error_response("Invalid tile request or coordinate (invalid_tile_coordinate)."),
+        "404": error_response("Tile, region, or tileset not found"),
+    }
+    raster_response_headers = {
+        **cache_response_headers,
+        "Content-Encoding": {
+            "schema": {"type": "string"},
+            "description": "Omitted for raster tiles since PNG/WebP/JPEG images are already compressed format-level.",
+        },
     }
     raster_tile = {
         "200": {
             "description": "Raster image tile. Cache-Control: public, max-age=31536000, immutable.",
-            "headers": cache_response_headers,
+            "headers": raster_response_headers,
             "content": {
                 "image/png": {"schema": {"type": "string", "format": "binary"}},
                 "image/webp": {"schema": {"type": "string", "format": "binary"}},
                 "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
             },
         },
-        "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid tile request"),
-        "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Tile or region not found"),
+        "400": error_response("Invalid tile request or coordinate (invalid_tile_coordinate)."),
+        "404": error_response("Tile or region not found"),
     }
     components = _openapi_components()
     components["schemas"].update({
@@ -1989,6 +2485,7 @@ def openapi_spec() -> dict:
         "TilesetsResponse": {
             "type": "object",
             "properties": {"tilesets": {"type": "array", "items": {"$ref": "#/components/schemas/Tileset"}}},
+            "required": ["tilesets"],
         },
         "Tileset": {
             "type": "object",
@@ -2072,7 +2569,7 @@ def openapi_spec() -> dict:
         "info": {
             "title": "Tavrix Internal Map Engine API",
             "version": "2.1.0",
-            "description": "Internal PMTiles/MapLibre engine for styles, manifests, vector tiles, raster tiles, glyphs, sprites, metadata, coverage, cache, and health checks.",
+            "description": "Internal PMTiles/MapLibre engine for styles, manifests, vector tiles, raster tiles, glyphs, sprites, metadata, coverage, cache, and health checks. All responses include the X-Request-ID header.",
         },
         "servers": [{"url": "/", "description": "Current host"}],
         "tags": [
@@ -2083,26 +2580,26 @@ def openapi_spec() -> dict:
         ],
         "paths": {
             "/docs": {"get": {"tags": ["Docs"], "summary": "Swagger UI", "responses": {"200": {"description": "HTML"}}}},
-            "/api/openapi.json": {"get": {"tags": ["Docs"], "summary": "OpenAPI document", "responses": {"200": ok({"type": "object"})}}},
-            "/api/health": {"get": {"tags": ["Health"], "summary": "Basic health", "responses": {"200": ok({"$ref": "#/components/schemas/HealthResponse"})}}},
-            "/api/health/live": {"get": {"tags": ["Health"], "summary": "Liveness check", "responses": {"200": ok({"type": "object"}, "Live")}}},
-            "/api/health/ready": {"get": {"tags": ["Health"], "summary": "Readiness check", "responses": {"200": ok({"$ref": "#/components/schemas/HealthDetailed"}, "Ready"), "503": ok({"$ref": "#/components/schemas/HealthDetailed"}, "Not ready")}}},
-            "/api/health/dependencies": {"get": {"tags": ["Health"], "summary": "Dependency checks", "security": internal_security, "responses": {"200": ok({"$ref": "#/components/schemas/HealthDetailed"}), "401": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Unauthorized")}}},
-            "/api/cache/status": {"get": {"tags": ["Cache"], "summary": "Cache status", "responses": {"200": ok({"$ref": "#/components/schemas/CacheStatus"})}}},
+            "/api/openapi.json": {"get": {"tags": ["Docs"], "summary": "OpenAPI document", "responses": {"200": ok_with_request_id({"type": "object"})}}},
+            "/api/health": {"get": {"tags": ["Health"], "summary": "Basic health", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/HealthResponse"})}}},
+            "/api/health/live": {"get": {"tags": ["Health"], "summary": "Liveness check", "responses": {"200": ok_with_request_id({"type": "object"}, "Live")}}},
+            "/api/health/ready": {"get": {"tags": ["Health"], "summary": "Readiness check", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/HealthDetailed"}, "Ready"), "503": ok_with_request_id({"$ref": "#/components/schemas/HealthDetailed"}, "Not ready")}}},
+            "/api/health/dependencies": {"get": {"tags": ["Health"], "summary": "Dependency checks", "security": internal_security, "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/HealthDetailed"}), "401": error_response("Unauthorized")}}},
+            "/api/cache/status": {"get": {"tags": ["Cache"], "summary": "Cache status", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/CacheStatus"})}}},
             "/api/cache/clear": {
-                "get": {"tags": ["Cache"], "summary": "Clear cache (legacy GET)", "security": internal_security, "responses": {"200": ok({"$ref": "#/components/schemas/MessageResponse"}), "401": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Unauthorized")}},
-                "post": {"tags": ["Cache"], "summary": "Clear cache", "security": internal_security, "responses": {"200": ok({"$ref": "#/components/schemas/MessageResponse"}), "401": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Unauthorized")}},
+                "get": {"tags": ["Cache"], "summary": "Clear cache (legacy GET)", "security": internal_security, "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/MessageResponse"}), "401": error_response("Unauthorized")}},
+                "post": {"tags": ["Cache"], "summary": "Clear cache", "security": internal_security, "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/MessageResponse"}), "401": error_response("Unauthorized")}},
             },
-            "/api/cache/warm": {"post": {"tags": ["Cache"], "summary": "Warm cache", "security": internal_security, "requestBody": {"required": False, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": {"200": ok({"type": "object"}), "401": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Unauthorized")}}},
-            "/api/styles": {"get": {"tags": ["Styles"], "summary": "List styles", "responses": {"200": ok({"$ref": "#/components/schemas/StylesResponse"})}}},
-            "/api/styles/{style_id}": {"get": {"tags": ["Styles"], "summary": "Style metadata", "parameters": [style_path_param], "responses": {"200": ok({"$ref": "#/components/schemas/StyleMetadata"}, "Style metadata. Cache-Control: public, max-age=300."), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Style not found")}}},
-            "/api/styles/validate": {"post": {"tags": ["Styles"], "summary": "Validate a MapLibre style", "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": {"200": ok({"$ref": "#/components/schemas/StyleValidation"})}}},
+            "/api/cache/warm": {"post": {"tags": ["Cache"], "summary": "Warm cache", "security": internal_security, "requestBody": {"required": False, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": {"200": ok_with_request_id({"type": "object"}), "401": error_response("Unauthorized")}}},
+            "/api/styles": {"get": {"tags": ["Styles"], "summary": "List styles", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/StylesResponse"})}}},
+            "/api/styles/{style_id}": {"get": {"tags": ["Styles"], "summary": "Style metadata", "parameters": [style_path_param], "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/StyleMetadata"}, "Style metadata. Cache-Control: public, max-age=300."), "404": error_response("Style not found")}}},
+            "/api/styles/validate": {"post": {"tags": ["Styles"], "summary": "Validate a MapLibre style", "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/StyleValidation"})}}},
             "/api/style.json": {"get": {"tags": ["Styles"], "summary": "Auto-resolved MapLibre style", "description": "Returns style.json with Cache-Control: public, max-age=300 and ETag.", "parameters": [p["style"], p["lon"], p["lat"], p["zoom"], p["bbox"]], "responses": {"200": cached_json({"$ref": "#/components/schemas/MapLibreStyle"}, "MapLibre style JSON. Cache-Control: public, max-age=300.")}}},
-            "/api/style/{region}.json": {"get": {"tags": ["Styles"], "summary": "Region MapLibre style", "description": "Returns style.json with Cache-Control: public, max-age=300 and ETag.", "parameters": [region_path, p["style"]], "responses": {"200": cached_json({"$ref": "#/components/schemas/MapLibreStyle"}, "MapLibre style JSON. Cache-Control: public, max-age=300."), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Manifest or style not found")}}},
-            "/api/regions": {"get": {"tags": ["Regions"], "summary": "List regions", "responses": {"200": ok({"$ref": "#/components/schemas/RegionsResponse"})}}},
-            "/api/resolve": {"get": {"tags": ["Regions"], "summary": "Resolve viewport to regions", "parameters": [p["lon"], p["lat"], p["bbox"]], "responses": {"200": ok({"$ref": "#/components/schemas/ResolveResponse"})}}},
+            "/api/style/{region}.json": {"get": {"tags": ["Styles"], "summary": "Region MapLibre style", "description": "Returns style.json with Cache-Control: public, max-age=300 and ETag.", "parameters": [region_path, p["style"]], "responses": {"200": cached_json({"$ref": "#/components/schemas/MapLibreStyle"}, "MapLibre style JSON. Cache-Control: public, max-age=300."), "404": error_response("Manifest or style not found")}}},
+            "/api/regions": {"get": {"tags": ["Regions"], "summary": "List regions", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/RegionsResponse"})}}},
+            "/api/resolve": {"get": {"tags": ["Regions"], "summary": "Resolve viewport to regions", "parameters": [p["lon"], p["lat"], p["bbox"]], "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/ResolveResponse"})}}},
             "/api/manifest.json": {"get": {"tags": ["Manifests"], "summary": "Auto-resolved manifest", "description": "Returns manifest JSON with Cache-Control: public, max-age=3600 and ETag.", "parameters": [p["lon"], p["lat"], p["bbox"]], "responses": {"200": cached_json({"$ref": "#/components/schemas/Manifest"}, "Manifest JSON. Cache-Control: public, max-age=3600.")}}},
-            "/api/manifest/{region}.json": {"get": {"tags": ["Manifests"], "summary": "Region manifest", "description": "Returns manifest JSON with Cache-Control: public, max-age=3600 and ETag.", "parameters": [region_path], "responses": {"200": cached_json({"$ref": "#/components/schemas/Manifest"}, "Manifest JSON. Cache-Control: public, max-age=3600."), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Manifest not found")}}},
+            "/api/manifest/{region}.json": {"get": {"tags": ["Manifests"], "summary": "Region manifest", "description": "Returns manifest JSON with Cache-Control: public, max-age=3600 and ETag.", "parameters": [region_path], "responses": {"200": cached_json({"$ref": "#/components/schemas/Manifest"}, "Manifest JSON. Cache-Control: public, max-age=3600."), "404": error_response("Manifest not found")}}},
             "/api/vector/tilejson.json": {"get": {"tags": ["Vector Tiles"], "summary": "Vector TileJSON", "description": "Returns TileJSON with Cache-Control: public, max-age=3600 and ETag.", "parameters": [region_query, tileset_query], "responses": {"200": cached_json({"$ref": "#/components/schemas/VectorTileJson"}, "Vector TileJSON. Cache-Control: public, max-age=3600.")}}},
             "/api/vector/{region}/tilejson.json": {"get": {"tags": ["Vector Tiles"], "summary": "Region Vector TileJSON", "description": "Returns TileJSON with Cache-Control: public, max-age=3600 and ETag.", "parameters": [region_path, tileset_query], "responses": {"200": cached_json({"$ref": "#/components/schemas/VectorTileJson"}, "Vector TileJSON. Cache-Control: public, max-age=3600.")}}},
             "/api/vector/{z}/{x}/{y}.pbf": {"get": {"tags": ["Vector Tiles"], "summary": "Auto-resolved vector tile", "description": "Convenient endpoint that resolves region from the tile center. Region-specific endpoints are recommended for production and CDN caching. Cache-Control: public, max-age=31536000, immutable; ETag is returned; Content-Encoding is gzip when applicable.", "parameters": [z_param, x_param, y_param, region_query], "responses": vector_tile}},
@@ -2112,41 +2609,71 @@ def openapi_spec() -> dict:
             "/api/raster/tilejson.json": {"get": {"tags": ["Raster Tiles"], "summary": "Raster TileJSON", "description": "Returns TileJSON with Cache-Control: public, max-age=3600 and ETag.", "parameters": [region_query, p["style"], raster_format_query], "responses": {"200": cached_json({"$ref": "#/components/schemas/RasterTileJson"}, "Raster TileJSON. Cache-Control: public, max-age=3600.")}}},
             "/api/raster/{z}/{x}/{y}.{format}": {"get": {"tags": ["Raster Tiles"], "summary": "Auto-resolved raster tile", "description": "Convenient endpoint that resolves region from the tile center. Region-specific endpoints are recommended for production and CDN caching. Cache-Control: public, max-age=31536000, immutable; ETag is returned.", "parameters": [z_param, x_param, y_param, raster_format, region_query, p["style"]], "responses": raster_tile}},
             "/api/raster/{region}/{z}/{x}/{y}.{format}": {"get": {"tags": ["Raster Tiles"], "summary": "Region raster tile", "parameters": [region_path, z_param, x_param, y_param, raster_format, p["style"]], "responses": raster_tile}},
-            "/api/fonts/{fontstack}/{range}.pbf": {"get": {"tags": ["Assets"], "summary": "Font glyph PBF", "description": "Returns glyph PBF with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "fontstack", "in": "path", "required": True, "schema": {"type": "string"}}, {"name": "range", "in": "path", "required": True, "schema": {"type": "string", "example": "0-255"}}], "responses": {"200": {"description": "Glyph PBF. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"application/x-protobuf": {"schema": {"type": "string", "format": "binary"}}}}, "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid glyph request"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Glyph not found")}}},
-            "/api/glyphs/{fontstack}/{range}.pbf": {"get": {"tags": ["Assets"], "summary": "Glyph PBF alias", "description": "Returns glyph PBF with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "fontstack", "in": "path", "required": True, "schema": {"type": "string"}}, {"name": "range", "in": "path", "required": True, "schema": {"type": "string", "example": "0-255"}}], "responses": {"200": {"description": "Glyph PBF. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"application/x-protobuf": {"schema": {"type": "string", "format": "binary"}}}}, "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid glyph request"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Glyph not found")}}},
-            "/api/sprites/{style}/sprite.json": {"get": {"tags": ["Assets"], "summary": "Sprite JSON", "description": "Returns sprite JSON with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": cached_json({"type": "object"}, "Sprite JSON. Cache-Control: public, max-age=31536000, immutable."), "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid sprite request"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Sprite or style not found")}}},
-            "/api/sprites/{style}/sprite.png": {"get": {"tags": ["Assets"], "summary": "Sprite PNG", "description": "Returns sprite PNG with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Sprite PNG. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid sprite request"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Sprite or style not found")}}},
-            "/api/sprites/{style}/sprite@2x.json": {"get": {"tags": ["Assets"], "summary": "Retina sprite JSON", "description": "Returns sprite JSON with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": cached_json({"type": "object"}, "Sprite JSON. Cache-Control: public, max-age=31536000, immutable."), "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid sprite request"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Sprite or style not found")}}},
-            "/api/sprites/{style}/sprite@2x.png": {"get": {"tags": ["Assets"], "summary": "Retina sprite PNG", "description": "Returns sprite PNG with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Sprite PNG. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, "400": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Invalid sprite request"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Sprite or style not found")}}},
-            "/api/tilesets": {"get": {"tags": ["Tilesets"], "summary": "List tilesets", "responses": {"200": ok({"$ref": "#/components/schemas/TilesetsResponse"})}}},
-            "/api/tilesets/{tileset_id}": {"get": {"tags": ["Tilesets"], "summary": "Tileset metadata across regions", "parameters": [{"name": "tileset_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": ok({"$ref": "#/components/schemas/TilesetsResponse"})}}},
-            "/api/tilesets/{region}/{tileset_id}": {"get": {"tags": ["Tilesets"], "summary": "Region tileset metadata", "parameters": [region_path, {"name": "tileset_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": ok({"$ref": "#/components/schemas/Tileset"}), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Tileset not found")}}},
-            "/api/tiles/inspect/{region}/{z}/{x}/{y}": {"get": {"tags": ["Debug"], "summary": "Inspect tile availability", "security": internal_security, "parameters": [region_path, z_param, x_param, y_param, tileset_query], "responses": {"200": ok({"$ref": "#/components/schemas/TileInspect"}), "401": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Unauthorized"), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Tile not found")}}},
-            "/api/coverage": {"get": {"tags": ["Coverage"], "summary": "All coverage", "responses": {"200": ok({"$ref": "#/components/schemas/CoverageResponse"})}}},
-            "/api/coverage/{region}": {"get": {"tags": ["Coverage"], "summary": "Region coverage", "parameters": [region_path], "responses": {"200": ok({"$ref": "#/components/schemas/Coverage"}), "404": ok({"$ref": "#/components/schemas/ErrorResponse"}, "Region not found")}}},
+            "/api/fonts/{fontstack}/{range}.pbf": {"get": {"tags": ["Assets"], "summary": "Font glyph PBF", "description": "Returns glyph PBF with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "fontstack", "in": "path", "required": True, "schema": {"type": "string"}}, {"name": "range", "in": "path", "required": True, "schema": {"type": "string", "example": "0-255"}}], "responses": {"200": {"description": "Glyph PBF. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"application/x-protobuf": {"schema": {"type": "string", "format": "binary"}}}}, "400": error_response("Invalid glyph request"), "404": error_response("Glyph not found")}}},
+            "/api/glyphs/{fontstack}/{range}.pbf": {"get": {"tags": ["Assets"], "summary": "Glyph PBF alias", "description": "Returns glyph PBF with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "fontstack", "in": "path", "required": True, "schema": {"type": "string"}}, {"name": "range", "in": "path", "required": True, "schema": {"type": "string", "example": "0-255"}}], "responses": {"200": {"description": "Glyph PBF. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"application/x-protobuf": {"schema": {"type": "string", "format": "binary"}}}}, "400": error_response("Invalid glyph request"), "404": error_response("Glyph not found")}}},
+            "/api/sprites/{style}/sprite.json": {"get": {"tags": ["Assets"], "summary": "Sprite JSON", "description": "Returns sprite JSON with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": cached_json({"type": "object"}, "Sprite JSON. Cache-Control: public, max-age=31536000, immutable."), "400": error_response("Invalid sprite request"), "404": error_response("Sprite or style not found")}}},
+            "/api/sprites/{style}/sprite.png": {"get": {"tags": ["Assets"], "summary": "Sprite PNG", "description": "Returns sprite PNG with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Sprite PNG. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, "400": error_response("Invalid sprite request"), "404": error_response("Sprite or style not found")}}},
+            "/api/sprites/{style}/sprite@2x.json": {"get": {"tags": ["Assets"], "summary": "Retina sprite JSON", "description": "Returns sprite JSON with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": cached_json({"type": "object"}, "Sprite JSON. Cache-Control: public, max-age=31536000, immutable."), "400": error_response("Invalid sprite request"), "404": error_response("Sprite or style not found")}}},
+            "/api/sprites/{style}/sprite@2x.png": {"get": {"tags": ["Assets"], "summary": "Retina sprite PNG", "description": "Returns sprite PNG with Cache-Control: public, max-age=31536000, immutable and ETag.", "parameters": [{"name": "style", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Sprite PNG. Cache-Control: public, max-age=31536000, immutable.", "headers": cache_response_headers, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, "400": error_response("Invalid sprite request"), "404": error_response("Sprite or style not found")}}},
+            "/api/tilesets": {"get": {"tags": ["Tilesets"], "summary": "List tilesets", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/TilesetsResponse"})}}},
+            "/api/tilesets/{tileset_id}": {"get": {"tags": ["Tilesets"], "summary": "Tileset metadata across regions", "parameters": [{"name": "tileset_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/TilesetsResponse"})}}},
+            "/api/tilesets/{region}/{tileset_id}": {"get": {"tags": ["Tilesets"], "summary": "Region tileset metadata", "parameters": [region_path, {"name": "tileset_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/Tileset"}), "404": error_response("Tileset not found")}}},
+            "/api/tiles/inspect/{region}/{z}/{x}/{y}": {
+                "get": {
+                    "tags": ["Debug"],
+                    "summary": "Inspect tile availability",
+                    "security": internal_security,
+                    "parameters": [region_path, z_param, x_param, y_param, tileset_query],
+                    "responses": {
+                        "200": ok_with_request_id({"$ref": "#/components/schemas/TileInspect"}),
+                        "400": error_response("Invalid tile coordinate (invalid_tile_coordinate)."),
+                        "401": error_response("Unauthorized"),
+                        "404": error_response("Tile not found"),
+                    }
+                }
+            },
+            "/api/coverage": {"get": {"tags": ["Coverage"], "summary": "All coverage", "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/CoverageResponse"})}}},
+            "/api/coverage/{region}": {"get": {"tags": ["Coverage"], "summary": "Region coverage", "parameters": [region_path], "responses": {"200": ok_with_request_id({"$ref": "#/components/schemas/Coverage"}), "404": error_response("Region not found")}}},
         },
         "components": components,
     }
 
 
 def swagger_ui_html() -> str:
-    return """<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>PMTiles Map API Docs</title>
-<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-<style>body{margin:0;background:#f7f8fa;}.swagger-ui .topbar{display:none;}</style>
-</head>
-<body>
-<div id="swagger-ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-<script>
-window.addEventListener("load",()=>{SwaggerUIBundle({url:"/api/openapi.json",dom_id:"#swagger-ui",deepLinking:true,presets:[SwaggerUIBundle.presets.apis],layout:"BaseLayout"});});
-</script>
-</body></html>"""
-
-
-# ─── HTTP Handler ─────────────────────────────────────────────────────────────
-
+    return """<!doctype html>
+
+<html lang="en">
+
+<head><meta charset="utf-8"><title>PMTiles Map API Docs</title>
+
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+
+<style>body{margin:0;background:#f7f8fa;}.swagger-ui .topbar{display:none;}</style>
+
+</head>
+
+<body>
+
+<div id="swagger-ui"></div>
+
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+
+<script>
+
+window.addEventListener("load",()=>{SwaggerUIBundle({url:"/api/openapi.json",dom_id:"#swagger-ui",deepLinking:true,presets:[SwaggerUIBundle.presets.apis],layout:"BaseLayout"});});
+
+</script>
+
+</body></html>"""
+
+
+
+
+
+# ─── HTTP Handler ─────────────────────────────────────────────────────────────
+
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "pmtiles-map-api/2.0"
 
@@ -2249,24 +2776,42 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             self.finish_request_log(start)
 
-    def route_get(self) -> None:
-        parsed = urlparse(self.path)
-        path   = unquote(parsed.path)
-        query  = parse_qs(parsed.query)
-
-        if path in ("/", "/demo"):
-            static = Path(__file__).parent / "static" / "index.html"
-            self.write_file(static, "text/html; charset=utf-8")
-            return
-
-        if path in ("/docs", "/api/docs"):
-            self.write_text(swagger_ui_html(), "text/html; charset=utf-8")
-            return
-
-        if path in ("/openapi.json", "/api/openapi.json"):
-            self.write_json(openapi_spec(), cache_seconds=60)
-            return
-
+    def route_get(self) -> None:
+
+        parsed = urlparse(self.path)
+
+        path   = unquote(parsed.path)
+
+        query  = parse_qs(parsed.query)
+
+
+
+        if path in ("/", "/demo"):
+
+            static = Path(__file__).parent / "static" / "index.html"
+
+            self.write_file(static, "text/html; charset=utf-8")
+
+            return
+
+
+
+        if path in ("/docs", "/api/docs"):
+
+            self.write_text(swagger_ui_html(), "text/html; charset=utf-8")
+
+            return
+
+
+
+        if path in ("/openapi.json", "/api/openapi.json"):
+
+            self.write_json(openapi_spec(), cache_seconds=60)
+
+            return
+
+
+
         if path == "/api/health/live":
             self.write_json({"ok": True, "status": "live"}, cache_seconds=5)
             return
@@ -2313,11 +2858,16 @@ class Handler(BaseHTTPRequestHandler):
             _cache.clear()
             self.write_json({"ok": True, "message": "Cache cleared", "cache": _cache.snapshot()})
             return
-
-        if path == "/api/regions":
-            self.write_json({"regions": listed_regions()})
-            return
-
+
+
+        if path == "/api/regions":
+
+            self.write_json({"regions": listed_regions()})
+
+            return
+
+
+
         if path == "/api/styles":
             self.write_json_etag({"styles": list_styles(), "default_style": DEFAULT_STYLE}, cache_seconds=STYLE_CACHE_SECONDS)
             return
@@ -2380,7 +2930,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         vector_region_tileset_match = re.fullmatch(
-            r"/api/vector/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)/(\d+)/(\d+)/(\d+)\.pbf",
+            r"/api/vector/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)/(-?\d+)/(-?\d+)/(-?\d+)\.pbf",
             path,
         )
         if vector_region_tileset_match:
@@ -2390,7 +2940,7 @@ class Handler(BaseHTTPRequestHandler):
             self.write_binary(body, VECTOR_TILE_CONTENT_TYPE, cache_seconds=TILE_CACHE_SECONDS, extra_headers=headers)
             return
 
-        vector_tile_match = re.fullmatch(r"/api/vector(?:/([a-zA-Z0-9_-]+))?/(\d+)/(\d+)/(\d+)\.pbf", path)
+        vector_tile_match = re.fullmatch(r"/api/vector(?:/([a-zA-Z0-9_-]+))?/(-?\d+)/(-?\d+)/(-?\d+)\.pbf", path)
         if vector_tile_match:
             segment, z_raw, x_raw, y_raw = vector_tile_match.groups()
             z, x, y = int(z_raw), int(x_raw), int(y_raw)
@@ -2409,7 +2959,7 @@ class Handler(BaseHTTPRequestHandler):
             self.write_binary(body, VECTOR_TILE_CONTENT_TYPE, cache_seconds=TILE_CACHE_SECONDS, extra_headers=headers)
             return
 
-        inspect_match = re.fullmatch(r"/api/tiles/inspect/([a-zA-Z0-9_-]+)/(\d+)/(\d+)/(\d+)", path)
+        inspect_match = re.fullmatch(r"/api/tiles/inspect/([a-zA-Z0-9_-]+)/(-?\d+)/(-?\d+)/(-?\d+)", path)
         if inspect_match:
             self.require_internal_auth()
             region, z_raw, x_raw, y_raw = inspect_match.groups()
@@ -2472,7 +3022,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         raster_match = re.fullmatch(
-            r"/api/raster(?:/([a-zA-Z0-9_-]+))?/(\d+)/(\d+)/(\d+)\.(png|webp|jpg|jpeg)",
+            r"/api/raster(?:/([a-zA-Z0-9_-]+))?/(-?\d+)/(-?\d+)/(-?\d+)\.(png|webp|jpg|jpeg)",
             path,
         )
         if raster_match:
@@ -2494,30 +3044,50 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/resolve":
             regions = resolve_regions(query)
             self.write_json({
-                "region": regions[0],
-                "regions": regions,
-                "manifest_url": f"/api/manifest/{regions[0]}.json",
-            })
-            return
-
-        if path == "/api/manifest.json":
+                "region": regions[0],
+
+                "regions": regions,
+
+                "manifest_url": f"/api/manifest/{regions[0]}.json",
+
+            })
+
+            return
+
+
+
+        if path == "/api/manifest.json":
+
             self.write_json_etag(load_manifest(resolve_region(query)), cache_seconds=MANIFEST_CACHE_SECONDS)
-            return
-
-        if path == "/api/style.json":
+            return
+
+
+
+        if path == "/api/style.json":
+
             self.write_json_etag(build_auto_style(query, resolve_style_id(query)), cache_seconds=STYLE_CACHE_SECONDS)
-            return
-
-        if path.startswith("/api/manifest/"):
-            region = path.removeprefix("/api/manifest/").removesuffix(".json")
+            return
+
+
+
+        if path.startswith("/api/manifest/"):
+
+            region = path.removeprefix("/api/manifest/").removesuffix(".json")
+
             self.write_json_etag(load_manifest(safe_id(region)), cache_seconds=MANIFEST_CACHE_SECONDS)
-            return
-
-        if path.startswith("/api/style/"):
-            region = path.removeprefix("/api/style/").removesuffix(".json")
+            return
+
+
+
+        if path.startswith("/api/style/"):
+
+            region = path.removeprefix("/api/style/").removesuffix(".json")
+
             self.write_json_etag(build_style(safe_id(region), resolve_style_id(query)), cache_seconds=STYLE_CACHE_SECONDS)
-            return
-
+            return
+
+
+
         self.write_error("not_found", "Not found", HTTPStatus.NOT_FOUND)
 
     def route_post(self) -> None:
@@ -2551,14 +3121,22 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise APIError("invalid_json", "Request body must be a JSON object", HTTPStatus.BAD_REQUEST)
         return payload
-
-    # ── write helpers ──────────────────────────────────────────────────────────
-
-    def _build_response(self, payload: dict) -> tuple[bytes, str]:
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        etag = f'"{hashlib.md5(body).hexdigest()}"'
-        return body, etag
-
+
+
+    # ── write helpers ──────────────────────────────────────────────────────────
+
+
+
+    def _build_response(self, payload: dict) -> tuple[bytes, str]:
+
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+        etag = f'"{hashlib.md5(body).hexdigest()}"'
+
+        return body, etag
+
+
+
     def write_json_etag(self, payload: dict, status=HTTPStatus.OK, cache_seconds: int = 0) -> None:
         body, etag = self._build_response(payload)
         if self.headers.get("If-None-Match") == etag:
@@ -2578,18 +3156,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", f"public, max-age={cache_seconds}{immutable}")
         else:
             self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
+        self.end_headers()
+
+        self.wfile.write(body)
+
+
+
     def write_json(self, payload: dict, status=HTTPStatus.OK, cache_seconds: int = 0) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        if cache_seconds:
-            self.send_header("Cache-Control", f"public, max-age={cache_seconds}, must-revalidate")
-        else:
-            self.send_header("Cache-Control", "no-store")
+        if cache_seconds:
+
+            self.send_header("Cache-Control", f"public, max-age={cache_seconds}, must-revalidate")
+
+        else:
+
+            self.send_header("Cache-Control", "no-store")
+
         self.end_headers()
         self.wfile.write(body)
 
@@ -2674,19 +3259,34 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
-
-
-# ─── Entry point ──────────────────────────────────────────────────────────────
-
-def main() -> None:
-    log.info("Starting PMTiles Map API on http://%s:%d", API_HOST, API_PORT)
-    log.info("Cache TTL=%ds  MaxThreads=%d", CACHE_TTL, MAX_THREADS)
-    httpd = LimitedThreadingHTTPServer((API_HOST, API_PORT), Handler)
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        log.info("Shutting down.")
-
-
-if __name__ == "__main__":
+
+
+
+
+# ─── Entry point ──────────────────────────────────────────────────────────────
+
+
+
+def main() -> None:
+
+    log.info("Starting PMTiles Map API on http://%s:%d", API_HOST, API_PORT)
+
+    log.info("Cache TTL=%ds  MaxThreads=%d", CACHE_TTL, MAX_THREADS)
+
+    httpd = LimitedThreadingHTTPServer((API_HOST, API_PORT), Handler)
+
+    try:
+
+        httpd.serve_forever()
+
+    except KeyboardInterrupt:
+
+        log.info("Shutting down.")
+
+
+
+
+
+if __name__ == "__main__":
+
     main()

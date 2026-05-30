@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "defaults": {
-    "source_srid": 3857,
+    "source_srid": 4326,
     "output_srid": 4326,
     "postgis_simplification": "none_for_mvp",
-    "bbox_macro": "ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857)",
-    "notes": "Configured for a default osm2pgsql schema: planet_osm_point, planet_osm_line, planet_osm_polygon, planet_osm_roads. Source way geometries are EPSG:3857 and exports are transformed to EPSG:4326."
+    "bbox_macro": "ST_MakeEnvelope({bbox}, 4326)",
+    "notes": "Configured for a default osm2pgsql schema: planet_osm_point, planet_osm_line, planet_osm_polygon, planet_osm_roads. Source way geometries are EPSG:4326 and exports stay in EPSG:4326."
   },
   "groups": {
     "global": {
@@ -13,7 +13,11 @@
       "filename_template": "global-z0-z5-{timestamp}.pmtiles",
       "minzoom": 0,
       "maxzoom": 5,
-      "sample_zooms": [0, 3, 5],
+      "sample_zooms": [
+        0,
+        3,
+        5
+      ],
       "tippecanoe_options": [
         "--projection=EPSG:4326",
         "--drop-densest-as-needed"
@@ -23,31 +27,31 @@
           "name": "countries",
           "description": "Administrative level 2 polygons where present in osm2pgsql data.",
           "geometry_type": "MultiPolygon",
-          "sql": "SELECT osm_id::text AS id, name, admin_level, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND boundary = 'administrative' AND admin_level = '2' AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, admin_level, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND boundary = 'administrative' AND admin_level = '2' AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "water",
           "description": "Major OSM water polygons for low zoom context.",
           "geometry_type": "MultiPolygon",
-          "sql": "SELECT osm_id::text AS id, name, COALESCE(water, \"natural\", landuse) AS water_type, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND (\"natural\" = 'water' OR water IS NOT NULL OR landuse = 'reservoir') AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, COALESCE(water, \"natural\", landuse) AS water_type, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND (\"natural\" = 'water' OR water IS NOT NULL OR landuse = 'reservoir') AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "country_boundaries",
           "description": "Administrative level 2 boundaries.",
           "geometry_type": "MultiLineString",
-          "sql": "SELECT osm_id::text AS id, name, admin_level, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_line WHERE way IS NOT NULL AND boundary = 'administrative' AND admin_level = '2' AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, admin_level, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_line WHERE way IS NOT NULL AND boundary = 'administrative' AND admin_level = '2' AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "major_cities",
           "description": "Capital and large city labels.",
           "geometry_type": "Point",
-          "sql": "SELECT osm_id::text AS id, name, place, population, capital, CASE WHEN capital IN ('yes', '2') THEN 1 WHEN NULLIF(regexp_replace(population, '[^0-9]', '', 'g'), '')::bigint >= 1000000 THEN 2 WHEN NULLIF(regexp_replace(population, '[^0-9]', '', 'g'), '')::bigint >= 250000 THEN 3 ELSE 4 END AS rank, ST_Force2D(ST_Transform(way, 4326))::geometry(Point, 4326) AS geom FROM public.planet_osm_point WHERE way IS NOT NULL AND place IN ('city', 'town') AND (capital IS NOT NULL OR NULLIF(regexp_replace(population, '[^0-9]', '', 'g'), '')::bigint >= 100000) AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857)"
+          "sql": "SELECT osm_id::text AS id, name, place, population, capital, CASE WHEN capital IN ('yes', '2') THEN 1 WHEN NULLIF(regexp_replace(population, '[^0-9]', '', 'g'), '')::bigint >= 1000000 THEN 2 WHEN NULLIF(regexp_replace(population, '[^0-9]', '', 'g'), '')::bigint >= 250000 THEN 3 ELSE 4 END AS rank, ST_Force2D(ST_Transform(way, 4326))::geometry(Point, 4326) AS geom FROM public.planet_osm_point WHERE way IS NOT NULL AND place IN ('city', 'town') AND (capital IS NOT NULL OR NULLIF(regexp_replace(population, '[^0-9]', '', 'g'), '')::bigint >= 100000) AND way && ST_MakeEnvelope({bbox}, 4326)"
         },
         {
           "name": "major_roads",
           "description": "Motorway, trunk, and primary roads.",
           "geometry_type": "MultiLineString",
-          "sql": "SELECT osm_id::text AS id, name, ref, highway AS road_class, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_roads WHERE way IS NOT NULL AND highway IN ('motorway', 'trunk', 'primary') AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, ref, highway AS road_class, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_roads WHERE way IS NOT NULL AND highway IN ('motorway', 'trunk', 'primary') AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         }
       ]
     },
@@ -56,48 +60,61 @@
       "filename_template": "basemap-{region}-z6-z14-{timestamp}.pmtiles",
       "minzoom": 6,
       "maxzoom": 14,
-      "sample_zooms": [6, 10, 14],
+      "sample_zooms": [
+        6,
+        10,
+        14
+      ],
       "tippecanoe_options": [
         "--projection=EPSG:4326",
-        "--drop-densest-as-needed"
+        "--drop-rate=1",
+        "--no-tile-size-limit",
+        "--no-feature-limit"
       ],
       "layers": [
         {
           "name": "roads",
           "description": "Regional OSM roads.",
           "geometry_type": "MultiLineString",
-          "sql": "SELECT osm_id::text AS id, name, ref, highway AS road_class, surface, oneway, bridge, tunnel, service, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_line WHERE way IS NOT NULL AND highway IN ('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'service', 'living_street') AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, ref, highway AS road_class, surface, oneway, bridge, tunnel, service, CASE WHEN highway IN ('motorway', 'trunk') THEN 10 WHEN highway = 'primary' THEN 20 WHEN highway = 'secondary' THEN 35 WHEN highway = 'tertiary' THEN 45 WHEN highway IN ('residential', 'unclassified', 'living_street') THEN 70 ELSE 90 END AS tile_priority, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_line WHERE way IS NOT NULL AND highway IN ('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'service', 'living_street') AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "buildings",
           "description": "Regional OSM building footprints.",
           "geometry_type": "MultiPolygon",
-          "sql": "SELECT osm_id::text AS id, name, building AS building_type, \"addr:housenumber\" AS housenumber, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND building IS NOT NULL AND building <> 'no' AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, building AS building_type, \"addr:housenumber\" AS housenumber, 1000 AS tile_priority, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND building IS NOT NULL AND building <> 'no' AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "water",
           "description": "Regional OSM water polygons.",
           "geometry_type": "MultiPolygon",
-          "sql": "SELECT osm_id::text AS id, name, COALESCE(water, \"natural\", waterway, landuse) AS water_type, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND (\"natural\" = 'water' OR water IS NOT NULL OR waterway IN ('riverbank', 'dock') OR landuse IN ('reservoir', 'basin')) AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, COALESCE(water, \"natural\", waterway, landuse) AS water_type, 5 AS tile_priority, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND (\"natural\" = 'water' OR water IS NOT NULL OR waterway IN ('riverbank', 'dock') OR landuse IN ('reservoir', 'basin')) AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "landuse",
           "description": "Regional OSM landuse and landcover polygons.",
           "geometry_type": "MultiPolygon",
-          "sql": "SELECT osm_id::text AS id, name, COALESCE(landuse, leisure, \"natural\") AS landuse_class, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND (landuse IS NOT NULL OR leisure IN ('park', 'garden', 'golf_course', 'stadium') OR \"natural\" IN ('wood', 'scrub', 'grassland', 'bare_rock', 'sand', 'desert')) AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, COALESCE(landuse, leisure, \"natural\") AS landuse_class, 300 AS tile_priority, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(MultiPolygon, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND (landuse IS NOT NULL OR leisure IN ('park', 'garden', 'golf_course', 'stadium') OR \"natural\" IN ('wood', 'scrub', 'grassland', 'bare_rock', 'sand', 'desert')) AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "boundaries",
           "description": "Regional administrative boundaries.",
           "geometry_type": "MultiLineString",
-          "sql": "SELECT osm_id::text AS id, name, admin_level, boundary AS boundary_type, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_line WHERE way IS NOT NULL AND boundary = 'administrative' AND NULLIF(admin_level, '')::int <= 6 AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857) AND ST_Intersects(way, ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857))"
+          "sql": "SELECT osm_id::text AS id, name, admin_level, boundary AS boundary_type, CASE WHEN NULLIF(admin_level, '')::int <= 4 THEN 4 ELSE 8 END AS tile_priority, ST_Multi(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 2))::geometry(MultiLineString, 4326) AS geom FROM public.planet_osm_line WHERE way IS NOT NULL AND boundary = 'administrative' AND NULLIF(admin_level, '')::int <= 6 AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
+        },
+        {
+          "name": "admin_labels",
+          "description": "Regional governorate/province labels from administrative polygons.",
+          "geometry_type": "Point",
+          "name_field": "name",
+          "sql": "SELECT osm_id::text AS id, name, admin_level, 1 AS tile_priority, ST_PointOnSurface(ST_CollectionExtract(ST_Force2D(ST_Transform(ST_MakeValid(way), 4326)), 3))::geometry(Point, 4326) AS geom FROM public.planet_osm_polygon WHERE way IS NOT NULL AND boundary = 'administrative' AND admin_level = '4' AND name IS NOT NULL AND way && ST_MakeEnvelope({bbox}, 4326) AND ST_Intersects(way, ST_MakeEnvelope({bbox}, 4326))"
         },
         {
           "name": "places",
           "description": "Regional OSM place labels.",
           "geometry_type": "Point",
           "name_field": "name",
-          "sql": "SELECT osm_id::text AS id, name, place, population, capital, CASE WHEN capital IN ('yes', '2') THEN 1 WHEN place = 'city' THEN 2 WHEN place = 'town' THEN 3 WHEN place = 'village' THEN 4 WHEN place IN ('suburb', 'neighbourhood') THEN 5 ELSE 6 END AS rank, ST_Force2D(ST_Transform(way, 4326))::geometry(Point, 4326) AS geom FROM public.planet_osm_point WHERE way IS NOT NULL AND name IS NOT NULL AND place IN ('city', 'town', 'village', 'suburb', 'neighbourhood', 'hamlet', 'locality') AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857)"
+          "sql": "SELECT osm_id::text AS id, name, place, population, capital, CASE WHEN capital IN ('yes', '2') THEN 1 WHEN place = 'city' THEN 2 WHEN place = 'town' THEN 3 WHEN place = 'village' THEN 4 WHEN place IN ('suburb', 'neighbourhood') THEN 5 ELSE 6 END AS rank, CASE WHEN capital IN ('yes', '2') THEN 1 WHEN place = 'city' THEN 2 WHEN place = 'town' THEN 3 WHEN place = 'village' THEN 4 WHEN place IN ('suburb', 'neighbourhood') THEN 5 ELSE 6 END AS tile_priority, ST_Force2D(ST_Transform(way, 4326))::geometry(Point, 4326) AS geom FROM public.planet_osm_point WHERE way IS NOT NULL AND name IS NOT NULL AND place IN ('city', 'town', 'village', 'suburb', 'neighbourhood', 'hamlet', 'locality') AND way && ST_MakeEnvelope({bbox}, 4326)"
         }
       ]
     },
@@ -106,7 +123,11 @@
       "filename_template": "pois-{region}-z10-z16-{timestamp}.pmtiles",
       "minzoom": 10,
       "maxzoom": 16,
-      "sample_zooms": [10, 14, 16],
+      "sample_zooms": [
+        10,
+        14,
+        16
+      ],
       "tippecanoe_options": [
         "--projection=EPSG:4326",
         "--drop-densest-as-needed"
@@ -118,7 +139,7 @@
           "geometry_type": "Point",
           "name_field": "name",
           "category_field": "category",
-          "sql": "SELECT osm_id::text AS id, name, COALESCE(amenity, shop, tourism, historic, leisure) AS category, amenity, shop, tourism, historic, leisure, brand, \"addr:housenumber\" AS housenumber, ST_Force2D(ST_Transform(way, 4326))::geometry(Point, 4326) AS geom FROM public.planet_osm_point WHERE way IS NOT NULL AND (amenity IN ('restaurant', 'cafe', 'fast_food', 'fuel', 'bank', 'pharmacy', 'hospital', 'school') OR shop IS NOT NULL OR tourism IN ('hotel', 'attraction', 'museum') OR historic IS NOT NULL OR leisure IN ('park', 'sports_centre')) AND way && ST_Transform(ST_MakeEnvelope({bbox}, 4326), 3857)"
+          "sql": "SELECT osm_id::text AS id, name, COALESCE(amenity, shop, tourism, historic, leisure) AS category, amenity, shop, tourism, historic, leisure, brand, \"addr:housenumber\" AS housenumber, ST_Force2D(ST_Transform(way, 4326))::geometry(Point, 4326) AS geom FROM public.planet_osm_point WHERE way IS NOT NULL AND (amenity IN ('restaurant', 'cafe', 'fast_food', 'fuel', 'bank', 'pharmacy', 'hospital', 'school') OR shop IS NOT NULL OR tourism IN ('hotel', 'attraction', 'museum') OR historic IS NOT NULL OR leisure IN ('park', 'sports_centre')) AND way && ST_MakeEnvelope({bbox}, 4326)"
         }
       ]
     }

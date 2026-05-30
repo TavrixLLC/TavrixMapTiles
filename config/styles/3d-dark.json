@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "Dark",
+  "name": "3D Dark",
   "glyphs": "{GLYPHS_URL}",
   "sources": {},
   "layers": [
@@ -845,13 +845,12 @@
     },
     {
       "id": "buildings",
-      "type": "fill",
+      "type": "fill-extrusion",
       "source": "basemap",
       "source-layer": "buildings",
-      "minzoom": 14.2,
+      "minzoom": 13.2,
       "paint": {
-        "fill-color": "#33404a",
-        "fill-opacity": [
+        "fill-extrusion-color": [
           "interpolate",
           [
             "linear"
@@ -859,11 +858,97 @@
           [
             "zoom"
           ],
-          14.2,
-          0,
+          13.2,
+          "#313b44",
           15,
-          0.78
-        ]
+          "#3f4c57",
+          17,
+          "#536270"
+        ],
+        "fill-extrusion-height": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.4,
+          0,
+          14.2,
+          [
+            "match",
+            [
+              "get",
+              "building_type"
+            ],
+            "apartments",
+            28,
+            "commercial",
+            30,
+            "office",
+            34,
+            "hotel",
+            32,
+            "hospital",
+            26,
+            "school",
+            22,
+            "industrial",
+            21,
+            "warehouse",
+            19,
+            "house",
+            13,
+            "residential",
+            15,
+            18
+          ],
+          16,
+          [
+            "match",
+            [
+              "get",
+              "building_type"
+            ],
+            "apartments",
+            65,
+            "commercial",
+            69,
+            "office",
+            80,
+            "hotel",
+            74,
+            "hospital",
+            61,
+            "school",
+            50,
+            "industrial",
+            48,
+            "warehouse",
+            44,
+            "house",
+            29,
+            "residential",
+            36,
+            42
+          ]
+        ],
+        "fill-extrusion-base": 0,
+        "fill-extrusion-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.2,
+          0,
+          14.2,
+          0.82
+        ],
+        "fill-extrusion-vertical-gradient": true
       }
     },
     {
@@ -871,9 +956,9 @@
       "type": "line",
       "source": "basemap",
       "source-layer": "buildings",
-      "minzoom": 15,
+      "minzoom": 15.2,
       "paint": {
-        "line-color": "#4a5965",
+        "line-color": "#758391",
         "line-width": [
           "interpolate",
           [
@@ -882,12 +967,12 @@
           [
             "zoom"
           ],
-          15,
-          0.25,
+          15.2,
+          0.18,
           17,
-          0.7
+          0.55
         ],
-        "line-opacity": 0.6
+        "line-opacity": 0.42
       }
     },
     {
@@ -1442,5 +1527,7 @@
         "text-halo-width": 1.2
       }
     }
-  ]
+  ],
+  "pitch": 58,
+  "bearing": -24
 }

@@ -36,7 +36,8 @@
 
       select,
       button,
-      a {
+      a,
+      .active-region {
         height: 34px;
         border: 1px solid rgba(31, 41, 51, 0.16);
         background: #fff;
@@ -50,13 +51,26 @@
       }
 
       button,
-      a {
+      a,
+      .active-region {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         padding: 0 12px;
         text-decoration: none;
+      }
+
+      button,
+      a {
         cursor: pointer;
+      }
+
+      .active-region {
+        min-width: 128px;
+        max-width: min(320px, 42vw);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .status {
@@ -76,7 +90,7 @@
   <body>
     <div id="map"></div>
     <div class="toolbar">
-      <select id="region" aria-label="Region"></select>
+      <span id="active-region" class="active-region">Auto</span>
       <select id="style" aria-label="Style"></select>
       <button id="reload" type="button">Reload</button>
       <a id="manifest" href="/api/manifest.json" target="_blank" rel="noreferrer">Manifest</a>
@@ -93,13 +107,16 @@
         true
       );
 
-      const regionSelect = document.querySelector("#region");
+      const activeRegionEl = document.querySelector("#active-region");
       const styleSelect = document.querySelector("#style");
       const reloadButton = document.querySelector("#reload");
       const manifestLink = document.querySelector("#manifest");
       const statusEl = document.querySelector("#status");
       const API_BASE = location.protocol === "file:" ? "http://localhost:8090" : "";
       let map;
+      let activeStyleKey = "";
+      let autoLoadTimer;
+      let styleRequestId = 0;
 
       function apiUrl(path) {
         return `${API_BASE}${path}`;
@@ -107,20 +124,6 @@
 
       function setStatus(text) {
         statusEl.textContent = text;
-      }
-
-      async function loadRegions() {
-        const response = await fetch(apiUrl("/api/regions"));
-        const payload = await response.json();
-        const regions = payload.regions.filter((region) => region.has_manifest);
-        regionSelect.innerHTML = "";
-        for (const region of regions) {
-          const option = document.createElement("option");
-          option.value = region.id;
-          option.textContent = region.name || region.id;
-          regionSelect.append(option);
-        }
-        regionSelect.value = new URLSearchParams(location.search).get("region") || regions[0]?.id || "saudi";
       }
 
       async function loadStyles() {
@@ -136,50 +139,134 @@
         styleSelect.value = new URLSearchParams(location.search).get("style") || payload.default_style || "light";
       }
 
-      async function loadMap() {
-        const region = regionSelect.value || "saudi";
-        const styleId = styleSelect.value || "light";
-        manifestLink.href = apiUrl(region ? `/api/manifest/${region}.json` : "/api/manifest.json");
-        setStatus(`Loading ${region} / ${styleId}`);
+      function formatCoord(value) {
+        return Number(value).toFixed(6);
+      }
 
-        const styleUrl = region
-          ? `/api/style/${region}.json?style=${encodeURIComponent(styleId)}`
-          : `/api/style.json?style=${encodeURIComponent(styleId)}`;
+      function appendCurrentViewport(params) {
+        if (!map) {
+          const initialParams = new URLSearchParams(location.search);
+          for (const key of ["lon", "lat", "bbox", "zoom"]) {
+            if (initialParams.has(key)) {
+              params.set(key, initialParams.get(key));
+            }
+          }
+          return;
+        }
+
+        const center = map.getCenter();
+        const bounds = map.getBounds();
+        const zoom = map.getZoom();
+        params.set("lon", formatCoord(center.lng));
+        params.set("lat", formatCoord(center.lat));
+        params.set("zoom", zoom.toFixed(2));
+
+        if (zoom >= 5.5) {
+          params.set(
+            "bbox",
+            [
+              bounds.getWest(),
+              bounds.getSouth(),
+              bounds.getEast(),
+              bounds.getNorth()
+            ].map(formatCoord).join(",")
+          );
+        }
+      }
+
+      function stylePath() {
+        const styleId = styleSelect.value || "light";
+        const params = new URLSearchParams({ style: styleId });
+        appendCurrentViewport(params);
+        return `/api/style.json?${params.toString()}`;
+      }
+
+      function updateManifestLink(regions) {
+        if (regions.length === 1) {
+          manifestLink.href = apiUrl(`/api/manifest/${regions[0]}.json`);
+          return;
+        }
+
+        const params = new URLSearchParams();
+        appendCurrentViewport(params);
+        manifestLink.href = apiUrl(`/api/resolve?${params.toString()}`);
+      }
+
+      function updateStatus(style) {
+        const styleId = styleSelect.value || "light";
+        const regions = style.metadata?.regions || [style.metadata?.region].filter(Boolean);
+        const regionText = regions.length ? regions.join(", ") : "no region";
+        const tilesets = Object.keys(style.metadata?.tilesets || {}).join(", ");
+        activeRegionEl.textContent = `Auto: ${regionText}`;
+        updateManifestLink(regions);
+        setStatus(`${regionText} / ${styleId}: ${tilesets || "no tilesets"}`);
+      }
+
+      function scheduleAutoLoad() {
+        window.clearTimeout(autoLoadTimer);
+        autoLoadTimer = window.setTimeout(() => {
+          loadMap().catch((error) => setStatus(error.message));
+        }, 350);
+      }
+
+      async function loadMap({ force = false } = {}) {
+        const styleUrl = stylePath();
+        const requestId = ++styleRequestId;
+        setStatus("Loading map data");
         const response = await fetch(apiUrl(styleUrl), { cache: "no-store" });
         if (!response.ok) {
           throw new Error(await response.text());
         }
-        const style = await response.json();
 
-        if (!map) {
+        const style = await response.json();
+        if (requestId !== styleRequestId) {
+          return;
+        }
+
+        const styleKey = style.metadata?.style_key || styleUrl;
+        if (!force && map && styleKey === activeStyleKey) {
+          updateStatus(style);
+          return;
+        }
+        activeStyleKey = styleKey;
+
+        const isInitialLoad = !map;
+        if (isInitialLoad) {
           map = new maplibregl.Map({
             container: "map",
             style,
             center: style.center || [45, 24],
             zoom: style.zoom || 7,
+            pitch: style.pitch || 0,
+            bearing: style.bearing || 0,
             hash: true
           });
           map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+          map.on("moveend", scheduleAutoLoad);
         } else {
           map.setStyle(style);
-          map.jumpTo({ center: style.center || map.getCenter(), zoom: style.zoom || map.getZoom() });
+          if (force) {
+            map.easeTo({
+              pitch: style.pitch || 0,
+              bearing: style.bearing || 0,
+              duration: 450
+            });
+          }
         }
 
-        if (style.metadata?.bounds) {
+        if (isInitialLoad && style.metadata?.bounds && !location.hash) {
           map.fitBounds(style.metadata.bounds, { padding: 48, duration: 0, maxZoom: 11 });
         }
 
         map.once("idle", () => {
-          const tilesets = Object.keys(style.metadata?.tilesets || {}).join(", ");
-          setStatus(`${region} / ${styleId}: ${tilesets || "no tilesets"}`);
+          updateStatus(style);
         });
       }
 
-      reloadButton.addEventListener("click", () => loadMap().catch((error) => setStatus(error.message)));
-      regionSelect.addEventListener("change", () => loadMap().catch((error) => setStatus(error.message)));
-      styleSelect.addEventListener("change", () => loadMap().catch((error) => setStatus(error.message)));
+      reloadButton.addEventListener("click", () => loadMap({ force: true }).catch((error) => setStatus(error.message)));
+      styleSelect.addEventListener("change", () => loadMap({ force: true }).catch((error) => setStatus(error.message)));
 
-      Promise.all([loadRegions(), loadStyles()])
+      loadStyles()
         .then(loadMap)
         .catch((error) => setStatus(error.message));
     </script>

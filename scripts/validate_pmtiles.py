@@ -6,8 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from common import (
     center_lonlat,
     get_group,
@@ -17,6 +15,7 @@ from common import (
     setup_logging,
     write_json_atomic,
 )
+from validate_published import validate_pmtiles_url
 
 
 LOGGER = setup_logging("validate_pmtiles")
@@ -42,6 +41,80 @@ def _metadata_layers(metadata: dict[str, Any]) -> set[str]:
             return {item.get("id") for item in parsed["vector_layers"] if item.get("id")}
 
     return set()
+
+
+def _metadata_vector_layers(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    if isinstance(metadata.get("vector_layers"), list):
+        return [item for item in metadata["vector_layers"] if isinstance(item, dict)]
+
+    nested = metadata.get("json")
+    if isinstance(nested, str) and nested.strip():
+        try:
+            parsed = json.loads(nested)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed.get("vector_layers"), list):
+            return [item for item in parsed["vector_layers"] if isinstance(item, dict)]
+    return []
+
+
+def _metadata_layer_fields(metadata: dict[str, Any]) -> dict[str, set[str]]:
+    fields: dict[str, set[str]] = {}
+    for layer in _metadata_vector_layers(metadata):
+        layer_id = layer.get("id")
+        layer_fields = layer.get("fields")
+        if isinstance(layer_id, str) and isinstance(layer_fields, dict):
+            fields[layer_id] = {str(field) for field in layer_fields}
+    return fields
+
+
+def _configured_multilingual_fields(layer: dict[str, Any]) -> set[str]:
+    multilingual = layer.get("multilingual") or {}
+    if not multilingual.get("enabled"):
+        return set()
+    languages = multilingual.get("languages")
+    if not languages:
+        languages = ["ar", "en", "ku", "fa", "tr", "fr", "de", "es", "ru", "pt", "it", "ur"]
+    return {"name_local", "name_int"} | {f"name_{lang}" for lang in languages}
+
+
+def _multilingual_field_check(metadata: dict[str, Any], group: dict[str, Any]) -> dict[str, Any]:
+    metadata_fields = _metadata_layer_fields(metadata)
+    layers = {}
+    for layer in group.get("layers", []):
+        expected = _configured_multilingual_fields(layer)
+        if not expected:
+            continue
+        layer_name = layer["name"]
+        observed = metadata_fields.get(layer_name, set())
+        layers[layer_name] = {
+            "expected": sorted(expected),
+            "observed": sorted(observed & expected),
+            "missing": sorted(expected - observed),
+        }
+    return {"layers": layers}
+
+
+def _multilingual_coverage(quality: dict[str, Any] | None) -> dict[str, Any]:
+    coverage = {}
+    if not quality:
+        return coverage
+    for layer_name, metrics in quality.get("layers", {}).items():
+        feature_count = int(metrics.get("feature_count") or 0)
+        if not feature_count:
+            continue
+        layer_coverage = {}
+        for field in ("name_local", "name_en", "name_ar", "name_ku"):
+            count_key = f"{field}_count"
+            if count_key in metrics:
+                count = int(metrics.get(count_key) or 0)
+                layer_coverage[field] = {
+                    "count": count,
+                    "coverage": round(count / feature_count, 4),
+                }
+        if layer_coverage:
+            coverage[layer_name] = layer_coverage
+    return coverage
 
 
 def _header_zoom(header: dict[str, Any], name: str) -> int | None:
@@ -93,14 +166,7 @@ def _tile_readable(pmtiles_path: Path, zoom: int, region_config: dict[str, Any])
 
 
 def _validate_cdn(url: str) -> dict[str, Any]:
-    response = requests.get(url, headers={"Range": "bytes=0-31"}, timeout=20)
-    return {
-        "url": url,
-        "status_code": response.status_code,
-        "content_length": len(response.content),
-        "accept_ranges": response.headers.get("accept-ranges"),
-        "ok": response.status_code in (200, 206) and len(response.content) > 0,
-    }
+    return validate_pmtiles_url(url, timeout=20)
 
 
 def _validate_quality(quality: dict[str, Any] | None, group: dict[str, Any]) -> list[str]:
@@ -145,6 +211,7 @@ def validate_pmtiles(
 
     header: dict[str, Any] = {}
     metadata: dict[str, Any] = {}
+    multilingual_field_check: dict[str, Any] = {"layers": {}}
     if not failures:
         run_command(["pmtiles", "show", str(pmtiles_path)], LOGGER)
         run_command(["pmtiles", "verify", str(pmtiles_path)], LOGGER)
@@ -163,6 +230,7 @@ def validate_pmtiles(
         missing_layers = expected_layers - actual_layers
         if missing_layers:
             failures.append(f"missing vector layers in metadata: {sorted(missing_layers)}")
+        multilingual_field_check = _multilingual_field_check(metadata, group)
 
         for zoom in group.get("sample_zooms", []):
             sample = _tile_readable(pmtiles_path, int(zoom), region_config)
@@ -188,6 +256,8 @@ def validate_pmtiles(
         "header": header,
         "bounds": _header_bounds(header) if header else None,
         "metadata_layers": sorted(_metadata_layers(metadata)) if metadata else [],
+        "multilingual_field_check": multilingual_field_check,
+        "multilingual_coverage": _multilingual_coverage(quality),
         "cdn_check": cdn_check,
         "quality_summary": quality,
     }

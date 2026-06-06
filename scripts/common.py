@@ -9,6 +9,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 ROOT_DIR = Path(os.getenv("APP_ROOT", Path(__file__).resolve().parents[1])).resolve()
@@ -19,6 +20,8 @@ LOG_DIR = Path(os.getenv("LOG_DIR", ROOT_DIR / "logs")).resolve()
 
 PMTILES_CACHE_CONTROL = "public, max-age=31536000, immutable"
 MANIFEST_CACHE_CONTROL = "public, max-age=60, must-revalidate"
+PMTILES_CONTENT_TYPE = "application/vnd.pmtiles"
+MANIFEST_CONTENT_TYPE = "application/json; charset=utf-8"
 
 
 def ensure_dirs() -> None:
@@ -127,7 +130,7 @@ def redact(value: Any) -> Any:
     if not isinstance(value, str):
         return value
     password = os.getenv("POSTGIS_PASSWORD", "")
-    secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
     redacted = value
     for token in (password, secret):
         if token:
@@ -181,11 +184,66 @@ def local_output_path_for(region: str, target: str, filename: str) -> Path:
     return OUTPUT_DIR / "tiles" / output_subdir_for(region, target) / filename
 
 
+def configured_public_base_url() -> str:
+    return os.getenv("S3_PUBLIC_BASE_URL") or os.getenv("CDN_BASE_URL") or os.getenv("STATIC_BASE_URL") or ""
+
+
 def url_for_key(key: str) -> str:
-    base = os.getenv("CDN_BASE_URL") or os.getenv("STATIC_BASE_URL") or ""
+    base = configured_public_base_url()
     if not base:
         return key
     return base.rstrip("/") + "/" + key.lstrip("/")
+
+
+def _env_flag(name: str) -> bool | None:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def running_inside_docker() -> bool:
+    forced = _env_flag("TAVRIX_IN_DOCKER")
+    if forced is not None:
+        return forced
+    forced = _env_flag("RUNNING_IN_DOCKER")
+    if forced is not None:
+        return forced
+    if Path("/.dockerenv").exists():
+        return True
+    cgroup_path = Path("/proc/1/cgroup")
+    try:
+        text = cgroup_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return any(marker in text.lower() for marker in ("docker", "containerd", "kubepods"))
+
+
+def is_loopback_base_url(value: str) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").strip().lower()
+    return host == "localhost" or host == "::1" or host.startswith("127.")
+
+
+def assert_verify_url_runtime_safe(verify_url: bool) -> None:
+    if not verify_url:
+        return
+    base = configured_public_base_url()
+    if running_inside_docker() and is_loopback_base_url(base):
+        raise RuntimeError(
+            "VERIFY_PUBLISHED_URL/--verify-url is configured with a loopback public base URL "
+            f"({base!r}) while running inside Docker. localhost/127.0.0.1 points to the "
+            "pmtiles-builder container, not the static nginx service. Use http://static:80 "
+            "inside docker compose, or run validate_published.py from the host with "
+            "http://localhost:8088."
+        )
 
 
 def lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:

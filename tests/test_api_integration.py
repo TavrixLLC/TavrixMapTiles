@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 BASE_URL = os.getenv("MAP_API_BASE_URL", "http://localhost:8090").rstrip("/")
 INTERNAL_TOKEN = os.getenv("MAP_INTERNAL_TOKEN", "dev-internal-token")
+TEST_PROFILE = os.getenv("MAP_API_TEST_PROFILE", "development").strip().lower()
 
 
 def request(path, method="GET", payload=None, headers=None):
@@ -45,6 +46,22 @@ class MapApiIntegrationTests(unittest.TestCase):
             raise unittest.SkipTest(f"map-api is not reachable at {BASE_URL}: {exc}") from exc
         if status != 200:
             raise unittest.SkipTest(f"map-api health returned {status}")
+        status, _headers, health = json_request("/api/health")
+        env = health.get("environment")
+        policy = health.get("direct_tile_policy")
+        if not env or not isinstance(policy, dict):
+            ready_status, _headers, ready = json_request("/api/health/ready")
+            env = env or ready.get("environment")
+            policy = policy if isinstance(policy, dict) else ready.get("direct_tile_policy")
+            if ready_status not in (200, 503):
+                raise unittest.SkipTest(f"map-api readiness returned {ready_status}")
+        direct_public = bool(policy.get("public_effective")) if isinstance(policy, dict) else False
+        if TEST_PROFILE != "development":
+            raise unittest.SkipTest(f"development integration tests disabled for MAP_API_TEST_PROFILE={TEST_PROFILE}")
+        if env == "production" or not direct_public:
+            raise unittest.SkipTest(
+                f"development integration tests require public direct tiles; live API env={env} direct_public={direct_public}"
+            )
 
     def assert_error(self, payload, code=None):
         self.assertIn("error", payload)
@@ -99,7 +116,10 @@ class MapApiIntegrationTests(unittest.TestCase):
             self.assertGreater(len(body), 0)
         else:
             self.assertEqual(status, 404)
-            self.assert_error(json.loads(body.decode("utf-8")), "not_found")
+            payload = json.loads(body.decode("utf-8"))
+            self.assert_error(payload, "not_found")
+            self.assertIn("fontstack", payload["error"]["details"])
+            self.assertIn("range", payload["error"]["details"])
 
     def test_sprite_serving(self):
         status, headers, payload = json_request("/api/sprites/light/sprite.json")
@@ -150,6 +170,26 @@ class MapApiIntegrationTests(unittest.TestCase):
         self.assertIn("max-age=300", headers["Cache-Control"])
         self.assertIn("sources", payload)
 
+    def test_style_language_parameter(self):
+        status, _headers, payload = json_request("/api/style/iraq.json?style=light&lang=en")
+        self.assertEqual(status, 200)
+        text_fields = [
+            layer.get("layout", {}).get("text-field")
+            for layer in payload.get("layers", [])
+            if layer.get("type") == "symbol" and "text-field" in layer.get("layout", {})
+        ]
+        self.assertTrue(any(["get", "name_en"] in field for field in text_fields if isinstance(field, list)))
+        road_fields = [
+            layer.get("layout", {}).get("text-field")
+            for layer in payload.get("layers", [])
+            if layer.get("id", "").startswith("highway-labels")
+        ]
+        self.assertTrue(any(field[:2] == ["coalesce", ["get", "ref"]] for field in road_fields if isinstance(field, list)))
+
+        status, _headers, payload = json_request("/api/style/iraq.json?style=light&lang=hi")
+        self.assertEqual(status, 400)
+        self.assert_error(payload, "unsupported_language")
+
     def test_style_validation(self):
         style = {
             "version": 8,
@@ -192,7 +232,8 @@ class MapApiIntegrationTests(unittest.TestCase):
         status, headers, payload = json_request("/api/manifest/iraq.json")
         self.assertEqual(status, 200)
         self.assertIn("ETag", headers)
-        self.assertIn("max-age=3600", headers["Cache-Control"])
+        self.assertIn("max-age=60", headers["Cache-Control"])
+        self.assertIn("must-revalidate", headers["Cache-Control"])
         self.assertIn("tilesets", payload)
 
     def test_raster_tile_and_tilejson_cache_headers(self):
@@ -270,12 +311,33 @@ class MapApiIntegrationTests(unittest.TestCase):
             "styles_dir",
             "pmtiles_files",
             "glyphs_dir",
+            "glyphs_ready",
             "sprites_dir",
             "default_region",
             "default_style",
             "cache",
+            "production_config_ready",
+            "cors_safe",
+            "internal_token_safe",
+            "default_region_ready",
+            "direct_tile_policy",
+            "manifest_ready",
         ):
             self.assertIn(key, payload["checks"])
+        for key in (
+            "environment",
+            "production_config_ready",
+            "cors_safe",
+            "internal_token_safe",
+            "default_region_ready",
+            "direct_tile_policy",
+            "glyphs_ready",
+            "manifest_ready",
+            "failures",
+        ):
+            self.assertIn(key, payload)
+        self.assertIn("glyphs", payload)
+        self.assertIn("required_ranges", payload["glyphs"])
         self.assertIn("missing", payload)
         self.assertIn("warnings", payload)
         self.assertEqual(json_request("/api/health/live")[2]["ok"], True)
@@ -379,6 +441,11 @@ class MapApiIntegrationTests(unittest.TestCase):
         )
         checks = schemas["HealthDetailed"]["properties"]["checks"]
         self.assertIn("manifests_dir", checks["properties"])
+        self.assertIn("glyphs_ready", checks["properties"])
+        self.assertIn("production_config_ready", checks["properties"])
+        self.assertIn("glyphs", schemas["HealthDetailed"]["properties"])
+        self.assertIn("failures", schemas["HealthDetailed"]["properties"])
+        self.assertIn("413", payload["paths"]["/api/styles/validate"]["post"]["responses"])
         self.assertIn("Cache-Control", payload["paths"]["/api/vector/{region}/{z}/{x}/{y}.pbf"]["get"]["responses"]["200"]["headers"])
         self.assertIn("ETag", payload["paths"]["/api/raster/{region}/{z}/{x}/{y}.{format}"]["get"]["responses"]["200"]["headers"])
 

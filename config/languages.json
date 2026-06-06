@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "supported_languages": [
+    "ar",
+    "en",
+    "ku",
+    "fa",
+    "tr",
+    "fr",
+    "de",
+    "es",
+    "ru",
+    "pt",
+    "it",
+    "ur"
+  ],
+  "road_languages": [
+    "ar",
+    "en",
+    "ku"
+  ],
+  "fallbacks": {
+    "en": ["name_en", "name_int", "name_local", "name_ar", "name"],
+    "ar": ["name_ar", "name_local", "name_en", "name"],
+    "ku": ["name_ku", "name_ar", "name_en", "name_local", "name"],
+    "fa": ["name_fa", "name_ar", "name_en", "name_local", "name"],
+    "tr": ["name_tr", "name_en", "name_local", "name"],
+    "fr": ["name_fr", "name_en", "name_local", "name"],
+    "de": ["name_de", "name_en", "name_local", "name"],
+    "es": ["name_es", "name_en", "name_local", "name"],
+    "ru": ["name_ru", "name_en", "name_local", "name"],
+    "pt": ["name_pt", "name_en", "name_local", "name"],
+    "it": ["name_it", "name_en", "name_local", "name"],
+    "ur": ["name_ur", "name_en", "name_ar", "name_local", "name"]
+  },
+  "unsupported_for_now": [
+    "hi",
+    "zh",
+    "ja"
+  ],
+  "notes": "Phase 1 uses OSM multilingual tags only. Wikidata and machine translation are intentionally excluded."
+}

@@ -13,6 +13,7 @@ import psycopg2
 
 from common import (
     TMP_DIR,
+    assert_verify_url_runtime_safe,
     ensure_dirs,
     iso_now,
     setup_logging,
@@ -25,7 +26,7 @@ from export_layers import export_layers
 from generate_pmtiles import generate_pmtiles
 from prune import prune
 from publish_manifest import publish_manifest
-from upload import upload_pmtiles
+from upload import upload_pmtiles, validate_object_storage_config
 from validate_pmtiles import validate_pmtiles
 
 
@@ -95,6 +96,9 @@ def build_once(
     ensure_dirs()
     if target == "global":
         region = "global"
+    assert_verify_url_runtime_safe(verify_url)
+    if not skip_upload and os.getenv("S3_BUCKET", "").strip():
+        validate_object_storage_config(require_bucket=True)
 
     stamp = timestamp_id()
     build_id = f"{target}-{region}-{stamp}"
@@ -117,7 +121,7 @@ def build_once(
         if verify_url:
             validation = validate_pmtiles(artifact, cdn_url=upload_result["url"], quality=quality)
 
-        manifest = publish_manifest(artifact, upload_result)
+        manifest = publish_manifest(artifact, upload_result, skip_upload=skip_upload)
 
         prune_result = None
         if not no_prune:

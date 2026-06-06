@@ -19,6 +19,21 @@ RASTER_FORMATS = {
     "jpeg": ("JPEG", "image/jpeg"),
 }
 
+LANGUAGE_FALLBACKS = {
+    "en": ["name_en", "name_int", "name_local", "name_ar", "name"],
+    "ar": ["name_ar", "name_local", "name_en", "name"],
+    "ku": ["name_ku", "name_ar", "name_en", "name_local", "name"],
+    "fa": ["name_fa", "name_ar", "name_en", "name_local", "name"],
+    "tr": ["name_tr", "name_en", "name_local", "name"],
+    "fr": ["name_fr", "name_en", "name_local", "name"],
+    "de": ["name_de", "name_en", "name_local", "name"],
+    "es": ["name_es", "name_en", "name_local", "name"],
+    "ru": ["name_ru", "name_en", "name_local", "name"],
+    "pt": ["name_pt", "name_en", "name_local", "name"],
+    "it": ["name_it", "name_en", "name_local", "name"],
+    "ur": ["name_ur", "name_en", "name_ar", "name_local", "name"],
+}
+
 
 class RasterTileError(Exception):
     def __init__(self, message: str, status: int = 400) -> None:
@@ -100,9 +115,10 @@ def raster_content_type(image_format: str) -> str:
 def raster_tilejson(
     region: str,
     style_id: str,
-    tile_url: str,
+    tile_url: str | None,
     manifest: dict[str, Any],
     image_format: str = "png",
+    lang: str | None = None,
 ) -> dict[str, Any]:
     image_format = normalize_raster_format(image_format)
     tilesets = manifest.get("tilesets", {})
@@ -113,11 +129,11 @@ def raster_tilejson(
             break
     if not bounds:
         bounds = manifest.get("bounds") or [-180.0, -85.05112878, 180.0, 85.05112878]
-    return {
+    payload = {
         "tilejson": "3.0.0",
         "name": f"Tavrix raster {region}",
         "scheme": "xyz",
-        "tiles": [tile_url],
+        "tiles": [tile_url] if tile_url else [],
         "minzoom": 0,
         "maxzoom": MAX_RASTER_ZOOM,
         "bounds": bounds,
@@ -126,7 +142,11 @@ def raster_tilejson(
         "format": image_format,
         "region": region,
         "style": style_id,
+        "direct_tiles_enabled": bool(tile_url),
     }
+    if lang:
+        payload["language"] = lang
+    return payload
 
 
 def render_raster_tile(
@@ -137,6 +157,7 @@ def render_raster_tile(
     y: int,
     style_id: str = "light",
     image_format: str = "png",
+    lang: str | None = None,
 ) -> bytes:
     validate_tile(z, x, y)
     image_format = normalize_raster_format(image_format)
@@ -152,19 +173,19 @@ def render_raster_tile(
 
     tilesets = manifest.get("tilesets", {})
     if z <= 5 and "global" in tilesets:
-        _render_tileset(draw, tilesets["global"], output_dir, z, x, y, z, x, y, theme, "global")
+        _render_tileset(draw, tilesets["global"], output_dir, z, x, y, z, x, y, theme, "global", lang)
     elif "basemap" in tilesets:
         maxzoom = int(tilesets["basemap"].get("maxzoom", 14))
         source_z = min(z, maxzoom)
         source_x = x >> max(0, z - source_z)
         source_y = y >> max(0, z - source_z)
-        _render_tileset(draw, tilesets["basemap"], output_dir, source_z, source_x, source_y, z, x, y, theme, "basemap")
+        _render_tileset(draw, tilesets["basemap"], output_dir, source_z, source_x, source_y, z, x, y, theme, "basemap", lang)
     elif "global" in tilesets:
         maxzoom = int(tilesets["global"].get("maxzoom", 5))
         source_z = min(z, maxzoom)
         source_x = x >> max(0, z - source_z)
         source_y = y >> max(0, z - source_z)
-        _render_tileset(draw, tilesets["global"], output_dir, source_z, source_x, source_y, z, x, y, theme, "global")
+        _render_tileset(draw, tilesets["global"], output_dir, source_z, source_x, source_y, z, x, y, theme, "global", lang)
     else:
         raise RasterTileError("Manifest does not contain a renderable tileset", 404)
 
@@ -173,7 +194,7 @@ def render_raster_tile(
         source_z = min(z, maxzoom)
         source_x = x >> max(0, z - source_z)
         source_y = y >> max(0, z - source_z)
-        _render_tileset(draw, tilesets["pois"], output_dir, source_z, source_x, source_y, z, x, y, theme, "pois")
+        _render_tileset(draw, tilesets["pois"], output_dir, source_z, source_x, source_y, z, x, y, theme, "pois", lang)
 
     return _image_bytes(image, image_format)
 
@@ -204,6 +225,7 @@ def _render_tileset(
     target_y: int,
     theme: dict[str, tuple[int, int, int, int]],
     kind: str,
+    lang: str | None = None,
 ) -> None:
     tile = _read_vector_tile(_tileset_path(tileset, output_dir), source_z, source_x, source_y)
     if not tile:
@@ -215,7 +237,7 @@ def _render_tileset(
         _draw_polygons(draw, tile.get("water", []), transformer, theme["water"])
         _draw_roads(draw, tile.get("major_roads", []), transformer, theme, target_z)
         _draw_lines(draw, tile.get("country_boundaries", []), transformer, theme["boundary"], 1.0)
-        _draw_place_labels(draw, tile.get("major_cities", []), transformer, theme, target_z)
+        _draw_place_labels(draw, tile.get("major_cities", []), transformer, theme, target_z, lang)
         return
 
     if kind == "pois":
@@ -228,7 +250,7 @@ def _render_tileset(
     _draw_roads(draw, tile.get("roads", []), transformer, theme, target_z)
     if target_z >= 14:
         _draw_polygons(draw, tile.get("buildings", []), transformer, theme["building"])
-    _draw_place_labels(draw, tile.get("places", []), transformer, theme, target_z)
+    _draw_place_labels(draw, tile.get("places", []), transformer, theme, target_z, lang)
 
 
 def _draw_landuse(draw, features: list[dict], transformer: "_Transformer", theme: dict) -> None:
@@ -299,7 +321,17 @@ def _draw_points(
                     draw.ellipse((px - r, py - r, px + r, py + r), fill=color)
 
 
-def _draw_place_labels(draw, features: list[dict], transformer: "_Transformer", theme: dict, z: int) -> None:
+def label_from_properties(properties: dict[str, Any], lang: str | None = None) -> Any:
+    if not lang:
+        return properties.get("name")
+    for field in LANGUAGE_FALLBACKS.get(lang, ["name"]):
+        value = properties.get(field)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def _draw_place_labels(draw, features: list[dict], transformer: "_Transformer", theme: dict, z: int, lang: str | None = None) -> None:
     if z < 7:
         return
     font = _font(15 if z >= 12 else 12)
@@ -307,7 +339,7 @@ def _draw_place_labels(draw, features: list[dict], transformer: "_Transformer", 
         rank = int(feature["properties"].get("rank") or 9)
         if rank > (2 if z < 10 else 4 if z < 13 else 6):
             continue
-        name = feature["properties"].get("name")
+        name = label_from_properties(feature["properties"], lang)
         if not name:
             continue
         for path in feature["geometry"]:
